@@ -8,14 +8,21 @@ window.fetch = async (...args) => {
 
 function addPlatformNavigation() {
   const cluster = document.querySelector('.status-cluster');
-  if (!cluster || document.querySelector('[data-platform-link]')) return;
-  const link = document.createElement('a');
-  link.dataset.platformLink = 'true';
-  link.href = location.pathname === '/workbench.html' ? '/' : '/workbench.html';
-  link.textContent = location.pathname === '/workbench.html' ? 'Emulator' : 'Workbench';
-  link.style.color = 'var(--accent)';
-  link.style.textDecoration = 'none';
-  cluster.prepend(link);
+  if (!cluster) return;
+  const destinations = [
+    ['/', 'Emulator'],
+    ['/workbench.html', 'Workbench'],
+    ['/equivalence.html', 'Equivalence']
+  ];
+  for (const [href, label] of destinations.reverse()) {
+    if (location.pathname === href || cluster.querySelector(`a[href="${href}"]`)) continue;
+    const link = document.createElement('a');
+    link.href = href;
+    link.textContent = label;
+    link.style.color = 'var(--accent)';
+    link.style.textDecoration = 'none';
+    cluster.prepend(link);
+  }
 }
 
 async function loadSession() {

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Equivalence Services · Singh Cloud Emulator</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/workbench.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">RUNTIME INTEGRATIONS</p><h1>Equivalence Services</h1></div>
+    <div class="status-cluster"><a href="/">Emulator</a><a href="/workbench.html">Workbench</a><span id="currentUser"></span><button id="logoutButton" class="text-button">Sign out</button></div>
+  </header>
+  <main class="workbench-content" style="padding:18px">
+    <section class="panel section-card"><div class="view-heading"><div><p class="eyebrow">SERVICE MESH</p><h2>Integration health</h2></div><button id="refreshServices">Refresh</button></div><div id="serviceGrid" class="metric-grid"></div></section>
+    <section class="panel section-card"><h2>Session links</h2><div class="inline-form"><input id="sessionId" placeholder="Cloud session ID"><button id="loadLinks">Load links</button></div><div id="sessionLinks" class="card-list"></div></section>
+    <section class="panel section-card"><h2>Appium UiAutomator2</h2><div class="inline-form"><input id="appiumSerial" placeholder="emulator-5554"><input id="appiumPackage" placeholder="Optional package"><button id="createAppium">Create session</button></div><div id="appiumResult" class="diagnostic-output">No Appium session.</div></section>
+    <section class="panel section-card"><h2>Network capture</h2><div class="inline-form"><input id="captureSerial" placeholder="emulator-5554"><input id="captureSession" placeholder="Optional cloud session ID"><button id="startCapture">Start capture</button></div><div id="captureList" class="card-list"></div></section>
+    <section class="panel section-card"><h2>Android inspection</h2><div class="inline-form"><input id="profileSerial" placeholder="emulator-5554"><input id="profilePackage" placeholder="com.example.app"><input id="profileDuration" type="number" min="1" max="120" value="10"><button id="collectPerfetto">Perfetto trace</button><button id="collectSimpleperf">CPU profile</button><button id="collectHeap">Heap dump</button><button id="loadHierarchy">UI hierarchy</button></div><pre id="inspectionOutput" class="diagnostic-output">No artifact collected.</pre></section>
+  </main>
+  <div id="toast" class="toast" hidden></div>
+  <script src="/session.js" defer></script>
+  <script src="/equivalence.js" defer></script>
+</body>
+</html>
