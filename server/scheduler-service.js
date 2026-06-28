@@ -1,6 +1,7 @@
 const store = require('./platform-store');
 const queues = require('./queue-service');
 const notifications = require('./notification-service');
+const debugSessions = require('./debug-service');
 
 let timer = null;
 let running = false;
@@ -16,6 +17,7 @@ async function sweep() {
       const now = Date.now();
       const staleWorkerMs = Math.max(30_000, Number(process.env.WORKER_STALE_MS || 90_000));
       const staleBuildMs = Math.max(120_000, Number(process.env.BUILD_STALE_MS || 30 * 60_000));
+      const queueRefreshMs = Math.max(5_000, Number(process.env.QUEUE_REFRESH_MS || 15_000));
 
       for (const worker of state.workers) {
         const heartbeat = Date.parse(worker.lastHeartbeatAt || worker.registeredAt || 0);
@@ -35,7 +37,7 @@ async function sweep() {
           continue;
         }
         if (session.status === 'queued') {
-          if (!session.lastQueuedAt || now - Date.parse(session.lastQueuedAt) > 60_000) {
+          if (!session.lastQueuedAt || now - Date.parse(session.lastQueuedAt) > queueRefreshMs) {
             session.lastQueuedAt = store.now();
             requeueSessions.push({ ...session });
           }
@@ -45,6 +47,7 @@ async function sweep() {
         if (heartbeat && now - heartbeat > staleWorkerMs) {
           session.status = 'queued';
           session.workerId = null;
+          session.workerApiKeyId = null;
           session.serial = '';
           session.claimedAt = null;
           session.startedAt = null;
@@ -57,7 +60,7 @@ async function sweep() {
 
       for (const build of state.builds) {
         if (build.status === 'queued') {
-          if (!build.lastQueuedAt || now - Date.parse(build.lastQueuedAt) > 60_000) {
+          if (!build.lastQueuedAt || now - Date.parse(build.lastQueuedAt) > queueRefreshMs) {
             build.lastQueuedAt = store.now();
             requeueBuilds.push({ ...build });
           }
@@ -68,6 +71,7 @@ async function sweep() {
         if (heartbeat && now - heartbeat > staleBuildMs) {
           build.status = 'queued';
           build.workerId = null;
+          build.workerApiKeyId = null;
           build.startedAt = null;
           build.lastHeartbeatAt = null;
           build.retryCount = Number(build.retryCount || 0) + 1;
@@ -79,6 +83,7 @@ async function sweep() {
 
     await Promise.all(requeueSessions.map((session) => queues.enqueue('session', session.id, { profileId: session.profileId, platform: session.platform || null })));
     await Promise.all(requeueBuilds.map((build) => queues.enqueue('build', build.id, { workspaceId: build.workspaceId, format: build.format })));
+    await debugSessions.cleanupExpired();
 
     for (const session of expiredSessions) {
       if (session.userEmail) {
@@ -99,7 +104,7 @@ async function sweep() {
 
 function startScheduler() {
   if (timer) return timer;
-  const interval = Math.max(10_000, Number(process.env.SCHEDULER_SWEEP_MS || 30_000));
+  const interval = Math.max(5_000, Number(process.env.SCHEDULER_SWEEP_MS || 10_000));
   timer = setInterval(() => sweep().catch((error) => console.error('Scheduler sweep failed:', error)), interval);
   timer.unref();
   sweep().catch((error) => console.error('Initial scheduler sweep failed:', error));
