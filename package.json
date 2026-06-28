@@ -7,16 +7,20 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "check": "node --check server/index.js && node --check server/adb.js && node --check server/emulator.js && node --check public/app.js"
+    "check": "node --check server/index.js && node --check server/adb.js && node --check server/emulator.js && node --check public/app.js",
+    "hash-password": "node scripts/hash-password.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.1",
     "ws": "^8.18.3"
   },
