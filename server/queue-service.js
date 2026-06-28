@@ -5,6 +5,7 @@ let client = null;
 let connecting = null;
 const memory = new Map();
 const memoryLeases = new Map();
+const memoryPending = new Set();
 
 function configured() {
   return Boolean(process.env.REDIS_URL);
@@ -34,6 +35,10 @@ function leaseKey(kind, id) {
   return `${prefix()}:lease:${kind}:${id}`;
 }
 
+function pendingKey(kind, id) {
+  return `${prefix()}:pending:${kind}:${id}`;
+}
+
 function memoryQueue(kind) {
   if (!memory.has(kind)) memory.set(kind, []);
   return memory.get(kind);
@@ -49,22 +54,32 @@ async function enqueue(kind, id, payload = {}) {
   };
   const redis = await getClient();
   if (redis) {
-    await redis.rPush(queueKey(kind), JSON.stringify(job));
-    return job;
+    const acquired = await redis.set(pendingKey(kind, job.id), job.nonce, { NX: true, EX: 86_400 });
+    if (!acquired) return null;
+    try {
+      await redis.rPush(queueKey(kind), JSON.stringify(job));
+      return job;
+    } catch (error) {
+      await redis.del(pendingKey(kind, job.id));
+      throw error;
+    }
   }
-  const queue = memoryQueue(kind);
-  if (!queue.some((item) => item.id === job.id)) queue.push(job);
+  const pending = `${kind}:${job.id}`;
+  if (memoryPending.has(pending)) return null;
+  memoryPending.add(pending);
+  memoryQueue(kind).push(job);
   return job;
 }
 
 async function claim(kind, workerId, leaseSeconds = 120) {
   const redis = await getClient();
-  const ttl = Math.max(30, Math.min(3600, Number(leaseSeconds || 120)));
+  const ttl = Math.max(30, Math.min(7200, Number(leaseSeconds || 120)));
   if (redis) {
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const raw = await redis.lPop(queueKey(kind));
       if (!raw) return null;
       const job = JSON.parse(raw);
+      await redis.del(pendingKey(kind, job.id));
       const lease = {
         ...job,
         workerId: String(workerId),
@@ -80,6 +95,7 @@ async function claim(kind, workerId, leaseSeconds = 120) {
   const queue = memoryQueue(kind);
   while (queue.length) {
     const job = queue.shift();
+    memoryPending.delete(`${kind}:${job.id}`);
     const key = `${kind}:${job.id}`;
     const existing = memoryLeases.get(key);
     if (existing && existing.expiresAt > Date.now()) continue;
@@ -97,7 +113,7 @@ async function claim(kind, workerId, leaseSeconds = 120) {
 
 async function renew(kind, id, workerId, leaseSeconds = 120) {
   const redis = await getClient();
-  const ttl = Math.max(30, Math.min(3600, Number(leaseSeconds || 120)));
+  const ttl = Math.max(30, Math.min(7200, Number(leaseSeconds || 120)));
   if (redis) {
     const key = leaseKey(kind, id);
     const raw = await redis.get(key);
@@ -124,13 +140,14 @@ async function ack(kind, id, workerId = null) {
       const raw = await redis.get(key);
       if (raw && JSON.parse(raw).workerId !== String(workerId)) return false;
     }
-    await redis.del(key);
+    await redis.del(key, pendingKey(kind, id));
     return true;
   }
   const key = `${kind}:${id}`;
   const entry = memoryLeases.get(key);
   if (workerId && entry && entry.lease.workerId !== String(workerId)) return false;
   memoryLeases.delete(key);
+  memoryPending.delete(key);
   return true;
 }
 
