@@ -1,6 +1,7 @@
 node_modules/
 .env
 .env.production
+.env.equivalence
 uploads/*
 !uploads/.gitkeep
 data/
@@ -12,3 +13,5 @@ npm-debug.log*
 deploy/certs/*
 !deploy/certs/.gitkeep
 deploy/secrets/users.json
+proxy-captures/
+profile-artifacts/
