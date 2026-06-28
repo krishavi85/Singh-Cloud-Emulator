@@ -5,6 +5,12 @@ const SERVICE_DEFINITIONS = {
     healthPathEnv: 'CUTTLEFISH_HEALTH_PATH',
     defaultHealthPath: '/'
   },
+  ios: {
+    label: 'Apple Simulator Worker',
+    baseUrlEnv: 'IOS_SIMULATOR_BASE_URL',
+    healthPathEnv: 'IOS_SIMULATOR_HEALTH_PATH',
+    defaultHealthPath: '/health'
+  },
   ide: {
     label: 'Cloud IDE',
     baseUrlEnv: 'CODE_SERVER_BASE_URL',
@@ -92,19 +98,21 @@ function renderTemplate(template, values) {
   return template.replace(/\{([A-Za-z0-9_]+)\}/g, (_match, key) => encodeURIComponent(values[key] ?? ''));
 }
 
-function sessionLinks(session) {
+function sessionLinks(session, profile = {}) {
   const values = {
     sessionId: session.id,
     workerId: session.workerId || '',
     serial: session.serial || '',
     workspaceId: session.workspaceId || '',
-    profileId: session.profileId || ''
+    profileId: session.profileId || '',
+    platform: profile.platform || ''
   };
+  const isApple = ['ios', 'ipados', 'tvos', 'watchos', 'visionos'].includes(profile.platform);
   return {
-    stream: renderTemplate(process.env.CUTTLEFISH_SESSION_URL_TEMPLATE, values),
+    stream: renderTemplate(isApple ? process.env.IOS_SIMULATOR_SESSION_URL_TEMPLATE : process.env.CUTTLEFISH_SESSION_URL_TEMPLATE, values),
     ide: renderTemplate(process.env.CODE_SERVER_SESSION_URL_TEMPLATE, values),
     proxy: renderTemplate(process.env.MITMPROXY_SESSION_URL_TEMPLATE, values),
-    profiler: renderTemplate(process.env.PERFETTO_SESSION_URL_TEMPLATE, values),
+    profiler: renderTemplate(isApple ? process.env.IOS_PROFILER_SESSION_URL_TEMPLATE : process.env.PERFETTO_SESSION_URL_TEMPLATE, values),
     debugger: renderTemplate(process.env.DEBUG_ADAPTER_SESSION_URL_TEMPLATE, values)
   };
 }
