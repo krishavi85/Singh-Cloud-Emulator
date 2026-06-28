@@ -1,0 +1,8 @@
+.git
+node_modules
+.env
+.env.production
+uploads
+data
+deploy/certs
+deploy/secrets/users.json

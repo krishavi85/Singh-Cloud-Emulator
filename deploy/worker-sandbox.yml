@@ -1,0 +1,35 @@
+services:
+  android-worker:
+    image: ${ANDROID_WORKER_IMAGE:?Set ANDROID_WORKER_IMAGE to a reviewed Android worker image}
+    restart: "no"
+    devices:
+      - /dev/kvm:/dev/kvm
+    expose:
+      - "5037"
+    environment:
+      ANDROID_SERIAL: ${ANDROID_SERIAL:-emulator-5554}
+      SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-60}
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,noexec,nosuid,nodev
+      - /run:size=64m,noexec,nosuid,nodev
+      - /home/android/.android:size=512m,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    mem_limit: 6g
+    cpus: 2.0
+    networks:
+      worker_net:
+        aliases:
+          - android-worker
+    labels:
+      com.singh-cloud-emulator.isolation: "one-user-one-worker"
+      com.singh-cloud-emulator.disposable: "true"
+
+networks:
+  worker_net:
+    external: true
+    name: singh-worker-net

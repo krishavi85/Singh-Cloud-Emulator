@@ -17,6 +17,8 @@
       <div class="status-cluster">
         <span id="connectionDot" class="status-dot"></span>
         <span id="connectionText">Connecting</span>
+        <span id="currentUser" class="muted"></span>
+        <button id="logoutButton" class="text-button" type="button">Sign out</button>
       </div>
     </header>
 
@@ -24,7 +26,7 @@
       <aside class="panel controls-panel">
         <section>
           <h2>Device</h2>
-          <label for="deviceSelect">Connected device</label>
+          <label for="deviceSelect">Assigned device</label>
           <div class="row">
             <select id="deviceSelect"></select>
             <button id="refreshDevices" class="icon-button" title="Refresh devices">↻</button>
@@ -34,18 +36,20 @@
 
         <section>
           <h2>Virtual device</h2>
+          <p class="muted">Public deployments use isolated workers managed outside this browser session.</p>
           <label for="avdName">Android Virtual Device name</label>
-          <input id="avdName" placeholder="Pixel_8_API_35">
+          <input id="avdName" placeholder="Managed externally" disabled>
           <div class="button-grid">
-            <button id="startEmulator" class="primary">Start AVD</button>
-            <button id="stopEmulator" class="danger">Stop</button>
+            <button id="startEmulator" class="primary" disabled>Start AVD</button>
+            <button id="stopEmulator" class="danger" disabled>Stop</button>
           </div>
         </section>
 
         <section>
           <h2>Install APK</h2>
+          <p class="muted">Every upload is scanned before installation and deleted after processing.</p>
           <input id="apkFile" type="file" accept=".apk,application/vnd.android.package-archive">
-          <button id="installApk" class="primary full">Upload and install</button>
+          <button id="installApk" class="primary full">Scan and install</button>
           <div id="uploadProgress" class="progress" hidden><span></span></div>
         </section>
 
@@ -74,8 +78,8 @@
           <img id="deviceScreen" alt="Android emulator display" draggable="false">
           <div id="emptyScreen" class="empty-screen">
             <div class="android-mark">A</div>
-            <h2>Connect an Android device</h2>
-            <p>Start an AVD or connect a device with ADB, then select it from the left panel.</p>
+            <h2>No assigned device online</h2>
+            <p>Ask an administrator to assign an isolated Android worker to your account.</p>
           </div>
         </div>
 
@@ -95,6 +99,7 @@
     </main>
   </div>
 
+  <script src="/session.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

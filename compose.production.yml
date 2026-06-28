@@ -1,0 +1,89 @@
+services:
+  gateway:
+    image: ${NGINX_IMAGE:-nginx:1.27-alpine}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m,noexec,nosuid,nodev
+      - /var/run:size=4m,noexec,nosuid,nodev
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - edge
+      - backend
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    expose:
+      - "8080"
+    volumes:
+      - uploads:/app/uploads
+      - audit_logs:/app/data/audit
+      - ./deploy/secrets/users.json:/run/secrets/users.json:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 1.0
+    depends_on:
+      clamav:
+        condition: service_healthy
+    networks:
+      - backend
+      - worker_net
+
+  clamav:
+    image: ${CLAMAV_IMAGE:-clamav/clamav:stable}
+    restart: unless-stopped
+    expose:
+      - "3310"
+    volumes:
+      - clamav_db:/var/lib/clamav
+    read_only: true
+    tmpfs:
+      - /run/clamav:size=64m,nosuid,nodev
+      - /tmp:size=256m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+      - updates
+
+networks:
+  edge:
+  updates:
+  backend:
+    internal: true
+  worker_net:
+    name: singh-worker-net
+    internal: true
+
+volumes:
+  uploads:
+  audit_logs:
+  clamav_db:
