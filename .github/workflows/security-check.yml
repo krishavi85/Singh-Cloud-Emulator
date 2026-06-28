@@ -1,9 +1,9 @@
-name: Security checks
+name: Security and platform checks
 
 on:
   pull_request:
   push:
-    branches: [main, security/public-production-hardening]
+    branches: [main, security/public-production-hardening, platform-expansion]
 
 permissions:
   contents: read
