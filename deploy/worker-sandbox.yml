@@ -22,11 +22,14 @@ services:
     mem_limit: 6g
     cpus: 2.0
     networks:
-      - worker_net
+      worker_net:
+        aliases:
+          - android-worker
     labels:
       com.singh-cloud-emulator.isolation: "one-user-one-worker"
       com.singh-cloud-emulator.disposable: "true"
 
 networks:
   worker_net:
-    internal: true
+    external: true
+    name: singh-worker-net
