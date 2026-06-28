@@ -1,1 +1,1 @@
-console.log('Singh Cloud Emulator');
+import('/client.js').catch((error) => console.error('Client startup failed:', error));
