@@ -14,6 +14,7 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const localRoot = path.resolve(process.env.ARTIFACT_LOCAL_DIR || path.join(__dirname, '..', 'data', 'artifacts'));
 let client = null;
+let publicClient = null;
 let bucketReady = false;
 
 function configured() {
@@ -24,26 +25,35 @@ function bucket() {
   return process.env.S3_BUCKET || 'singh-cloud-artifacts';
 }
 
+function clientOptions(endpoint) {
+  return {
+    region: process.env.S3_REGION || 'us-east-1',
+    endpoint,
+    forcePathStyle: String(process.env.S3_FORCE_PATH_STYLE || 'true').toLowerCase() === 'true',
+    credentials: {
+      accessKeyId: process.env.S3_ACCESS_KEY_ID,
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY
+    }
+  };
+}
+
 function getClient() {
   if (!configured()) return null;
-  if (!client) {
-    client = new S3Client({
-      region: process.env.S3_REGION || 'us-east-1',
-      endpoint: process.env.S3_ENDPOINT,
-      forcePathStyle: String(process.env.S3_FORCE_PATH_STYLE || 'true').toLowerCase() === 'true',
-      credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY_ID,
-        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY
-      },
-      tls: String(process.env.S3_TLS || 'false').toLowerCase() === 'true'
-    });
-  }
+  if (!client) client = new S3Client(clientOptions(process.env.S3_ENDPOINT));
   return client;
+}
+
+function getPublicClient() {
+  const endpoint = process.env.S3_PUBLIC_ENDPOINT;
+  if (!configured() || !endpoint) return null;
+  if (!publicClient) publicClient = new S3Client(clientOptions(endpoint));
+  return publicClient;
 }
 
 function safeKey(value) {
   const normalized = String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
-  if (!normalized || normalized.includes('..') || !/^[A-Za-z0-9_./-]{1,900}$/.test(normalized)) {
+  const segments = normalized.split('/');
+  if (!normalized || segments.includes('..') || !/^[A-Za-z0-9_./-]{1,900}$/.test(normalized)) {
     throw Object.assign(new Error('Invalid object storage key.'), { status: 400 });
   }
   return normalized;
@@ -89,16 +99,20 @@ async function putFile(keyValue, filePath, contentType = 'application/octet-stre
 
 async function presignUpload(keyValue, contentType = 'application/octet-stream', expiresSeconds = 900) {
   if (!configured()) throw Object.assign(new Error('Presigned uploads require S3-compatible storage.'), { status: 503 });
+  const signer = getPublicClient();
+  if (!signer) throw Object.assign(new Error('S3_PUBLIC_ENDPOINT is required for client-side presigned uploads.'), { status: 503 });
   await ensureBucket();
   const key = safeKey(keyValue);
   const expiresIn = Math.max(60, Math.min(3600, Number(expiresSeconds || 900)));
-  const url = await getSignedUrl(getClient(), new PutObjectCommand({ Bucket: bucket(), Key: key, ContentType: contentType }), { expiresIn });
+  const url = await getSignedUrl(signer, new PutObjectCommand({ Bucket: bucket(), Key: key, ContentType: contentType }), { expiresIn });
   return { key, url, expiresIn };
 }
 
 async function presignDownload(keyValue, filename = '', expiresSeconds = 300) {
   const key = safeKey(keyValue);
-  if (!configured()) return { key, local: true, path: path.join(localRoot, key) };
+  if (!configured()) return { key, local: true, proxy: true, path: path.join(localRoot, key) };
+  const signer = getPublicClient();
+  if (!signer) return { key, local: false, proxy: true };
   await ensureBucket();
   const expiresIn = Math.max(30, Math.min(3600, Number(expiresSeconds || 300)));
   const command = new GetObjectCommand({
@@ -106,8 +120,25 @@ async function presignDownload(keyValue, filename = '', expiresSeconds = 300) {
     Key: key,
     ResponseContentDisposition: filename ? `attachment; filename="${path.basename(filename)}"` : undefined
   });
-  const url = await getSignedUrl(getClient(), command, { expiresIn });
-  return { key, url, expiresIn, local: false };
+  const url = await getSignedUrl(signer, command, { expiresIn });
+  return { key, url, expiresIn, local: false, proxy: false };
+}
+
+async function openObject(keyValue) {
+  const key = safeKey(keyValue);
+  if (!configured()) {
+    const data = await fs.readFile(path.join(localRoot, key));
+    return { key, body: data, sizeBytes: data.length, contentType: 'application/octet-stream', metadata: {} };
+  }
+  await ensureBucket();
+  const result = await getClient().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+  return {
+    key,
+    body: result.Body,
+    sizeBytes: Number(result.ContentLength || 0),
+    contentType: result.ContentType || 'application/octet-stream',
+    metadata: result.Metadata || {}
+  };
 }
 
 async function stat(keyValue) {
@@ -147,10 +178,10 @@ async function health() {
   }
   try {
     await ensureBucket();
-    return { configured: true, healthy: true, backend: 's3', bucket: bucket() };
+    return { configured: true, healthy: true, backend: 's3', bucket: bucket(), publicEndpoint: Boolean(process.env.S3_PUBLIC_ENDPOINT) };
   } catch (error) {
     return { configured: true, healthy: false, backend: 's3', bucket: bucket(), error: error.message };
   }
 }
 
-module.exports = { configured, health, presignDownload, presignUpload, putBuffer, putFile, readLocal, remove, stat };
+module.exports = { configured, health, openObject, presignDownload, presignUpload, putBuffer, putFile, readLocal, remove, stat };
