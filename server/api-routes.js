@@ -12,6 +12,7 @@ function registerApiRoutes(options) {
   const managementRoutes = require('./management-routes');
   const billingRoutes = require('./billing-routes');
   const systemRoutes = require('./system-routes');
+  const developerToolsRoutes = require('./developer-tools-routes');
   const equivalenceRoutes = require('./equivalence-routes');
 
   deviceRoutes.registerDeviceRoutes(options.app);
@@ -27,6 +28,7 @@ function registerApiRoutes(options) {
   managementRoutes.registerManagementRoutes(options.app);
   billingRoutes.registerBillingRoutes(options.app);
   systemRoutes.registerSystemRoutes(options.app);
+  developerToolsRoutes.registerDeveloperToolsRoutes(options.app);
   equivalenceRoutes.registerEquivalenceRoutes(options.app);
 }
 
