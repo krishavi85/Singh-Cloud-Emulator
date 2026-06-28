@@ -2,6 +2,9 @@ const store = require('./platform-store');
 const queues = require('./queue-service');
 const notifications = require('./notification-service');
 const debugSessions = require('./debug-service');
+const billingMeter = require('./billing-meter-service');
+const { recordBuild, recordSession } = require('./session-meter');
+const { recordCapture } = require('./resource-meter');
 
 let timer = null;
 let running = false;
@@ -31,11 +34,15 @@ async function sweep() {
       }
 
       for (const session of state.sessions) {
-        if (['stopped', 'expired', 'failed'].includes(session.status)) continue;
+        if (['stopped', 'expired', 'failed'].includes(session.status)) {
+          recordSession(state, session);
+          continue;
+        }
         if (Date.parse(session.expiresAt) <= now) {
           session.status = 'expired';
           session.endedAt = store.now();
           session.finishReason = 'ttl-expired';
+          recordSession(state, session);
           expiredSessions.push({ ...session });
           continue;
         }
@@ -62,6 +69,10 @@ async function sweep() {
       }
 
       for (const build of state.builds) {
+        if (['completed', 'failed', 'cancelled'].includes(build.status)) {
+          recordBuild(state, build);
+          continue;
+        }
         if (build.status === 'queued') {
           if (!build.lastQueuedAt || now - Date.parse(build.lastQueuedAt) > queueRefreshMs) {
             build.lastQueuedAt = store.now();
@@ -84,6 +95,10 @@ async function sweep() {
       }
 
       for (const capture of state.networkCaptures) {
+        if (['stopped', 'failed', 'cancelled'].includes(capture.status)) {
+          recordCapture(state, capture);
+          continue;
+        }
         if (capture.status === 'queued') {
           if (!capture.lastQueuedAt || now - Date.parse(capture.lastQueuedAt) > queueRefreshMs) {
             capture.lastQueuedAt = store.now();
@@ -114,6 +129,7 @@ async function sweep() {
     await Promise.all(requeueBuilds.map((build) => queues.enqueue('build', build.id, { workspaceId: build.workspaceId, format: build.format })));
     await Promise.all(requeueCaptures.map((capture) => queues.enqueue('capture', capture.id, { serial: capture.serial, sessionId: capture.sessionId })));
     await debugSessions.cleanupExpired();
+    await billingMeter.flushUsage(Number(process.env.BILLING_BATCH_SIZE || 100));
 
     for (const session of expiredSessions) {
       if (session.userEmail) {
