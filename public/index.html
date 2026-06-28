@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Browser-based Android emulator control panel">
+  <title>Singh Cloud Emulator</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">ANDROID CLOUD LAB</p>
+        <h1>Singh Cloud Emulator</h1>
+      </div>
+      <div class="status-cluster">
+        <span id="connectionDot" class="status-dot"></span>
+        <span id="connectionText">Connecting</span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel controls-panel">
+        <section>
+          <h2>Device</h2>
+          <label for="deviceSelect">Connected device</label>
+          <div class="row">
+            <select id="deviceSelect"></select>
+            <button id="refreshDevices" class="icon-button" title="Refresh devices">↻</button>
+          </div>
+          <p id="deviceDetails" class="muted">No device selected.</p>
+        </section>
+
+        <section>
+          <h2>Virtual device</h2>
+          <label for="avdName">Android Virtual Device name</label>
+          <input id="avdName" placeholder="Pixel_8_API_35">
+          <div class="button-grid">
+            <button id="startEmulator" class="primary">Start AVD</button>
+            <button id="stopEmulator" class="danger">Stop</button>
+          </div>
+        </section>
+
+        <section>
+          <h2>Install APK</h2>
+          <input id="apkFile" type="file" accept=".apk,application/vnd.android.package-archive">
+          <button id="installApk" class="primary full">Upload and install</button>
+          <div id="uploadProgress" class="progress" hidden><span></span></div>
+        </section>
+
+        <section>
+          <h2>Launch app</h2>
+          <label for="packageName">Android package name</label>
+          <input id="packageName" placeholder="com.example.app">
+          <button id="launchPackage" class="full">Launch package</button>
+        </section>
+      </aside>
+
+      <section class="viewer-column">
+        <div class="device-toolbar">
+          <button data-key="3" title="Home">●</button>
+          <button data-key="4" title="Back">‹</button>
+          <button data-key="187" title="Recent apps">▢</button>
+          <button data-key="26" title="Power">⏻</button>
+          <span class="divider"></span>
+          <button id="rotateLeft" title="Rotate left">↶</button>
+          <button id="rotateRight" title="Rotate right">↷</button>
+          <button id="takeScreenshot" title="Open screenshot">⌁</button>
+          <span id="resolutionLabel" class="resolution">—</span>
+        </div>
+
+        <div id="phoneFrame" class="phone-frame" tabindex="0" aria-label="Interactive Android screen">
+          <img id="deviceScreen" alt="Android emulator display" draggable="false">
+          <div id="emptyScreen" class="empty-screen">
+            <div class="android-mark">A</div>
+            <h2>Connect an Android device</h2>
+            <p>Start an AVD or connect a device with ADB, then select it from the left panel.</p>
+          </div>
+        </div>
+
+        <form id="textForm" class="text-control">
+          <input id="textInput" autocomplete="off" placeholder="Type text into the Android device">
+          <button class="primary">Send text</button>
+        </form>
+      </section>
+
+      <aside class="panel activity-panel">
+        <div class="activity-heading">
+          <h2>Session activity</h2>
+          <button id="clearLog" class="text-button">Clear</button>
+        </div>
+        <div id="activityLog" class="activity-log" aria-live="polite"></div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
