@@ -1,1 +1,23 @@
-Workbench
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Singh Cloud Workbench</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/workbench.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">CLOUD ANDROID PLATFORM</p><h1>Singh Cloud Workbench</h1></div>
+    <div class="status-cluster"><a href="/">Emulator</a><span id="currentUser"></span><button id="logoutButton" class="text-button">Sign out</button></div>
+  </header>
+  <div class="workbench-layout">
+    <nav id="workbenchNav" class="panel workbench-nav"></nav>
+    <main id="workbenchContent" class="workbench-content"></main>
+  </div>
+  <div id="toast" class="toast" hidden></div>
+  <script src="/session.js" defer></script>
+  <script src="/workbench.js" defer></script>
+</body>
+</html>
