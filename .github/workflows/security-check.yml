@@ -1,28 +1,36 @@
-name: Security and platform checks
+name: Verify real application
 
 on:
   pull_request:
   push:
     branches: [main, top-tier-production-completion]
 
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
-  validate:
+  application:
+    name: Application, security and Compose
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: npm install --ignore-scripts --no-fund
-      - run: npm run check
-      - run: npm test
-      - run: npm audit --omit=dev --audit-level=high
-      - run: cp deploy/top-tier.env.example deploy/top-tier.env
-      - name: Validate Compose stacks
+          node-version: "24"
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-fund
+      - name: Validate source, references, tests and live startup
+        run: npm run validate
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Prepare production template
+        run: cp deploy/top-tier.env.example deploy/top-tier.env
+      - name: Validate deployment manifests
         env:
           CODE_SERVER_PASSWORD: ci-value
           TURN_REALM: emulator.example.com
@@ -35,9 +43,40 @@ jobs:
           MINIO_ROOT_PASSWORD: ci-value
           GRAFANA_ADMIN_PASSWORD: ci-value
           WORKER_API_BASE: https://emulator.example.com
-          BUILD_WORKER_API_KEY: ci-value
-          CAPTURE_WORKER_API_KEY: ci-value
+          BUILD_WORKER_API_KEY: sce_live_ci_build_worker_key_1234567890
+          CAPTURE_WORKER_API_KEY: sce_live_ci_capture_worker_key_1234567890
         run: |
+          docker compose -f compose.production.yml config >/dev/null
           docker compose -f compose.equivalence.yml config >/dev/null
           docker compose -f compose.workers.yml config >/dev/null
           docker compose -f compose.top-tier.yml config >/dev/null
+
+  api-image:
+    name: Build production API image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build --pull --tag singh-cloud-emulator:ci .
+
+  runtime-images:
+    name: Build ${{ matrix.name }} image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Gradle Android worker
+            dockerfile: deploy/workers/gradle/Dockerfile
+          - name: Traffic capture worker
+            dockerfile: deploy/workers/traffic/Dockerfile
+          - name: Browser Android IDE
+            dockerfile: deploy/equivalence/ide/Dockerfile
+          - name: Appium UiAutomator2
+            dockerfile: deploy/equivalence/appium/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify image
+        run: docker build --pull --file "${{ matrix.dockerfile }}" --tag "sce-${{ strategy.job-index }}:ci" .
