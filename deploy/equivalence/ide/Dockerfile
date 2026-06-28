@@ -21,7 +21,10 @@ RUN if [ -n "$ANDROID_COMMANDLINE_TOOLS_URL" ]; then \
     fi \
     && chown -R coder:coder /opt/android-sdk /workspace
 
+COPY deploy/equivalence/ide/start-ide.sh /usr/local/bin/start-ide.sh
+RUN chmod 0755 /usr/local/bin/start-ide.sh
+
 USER coder
 WORKDIR /workspace
 EXPOSE 8080
-CMD ["code-server", "--bind-addr", "0.0.0.0:8080", "--auth", "password", "/workspace"]
+CMD ["/usr/local/bin/start-ide.sh"]
