@@ -16,8 +16,13 @@ function workspaceDir(userId, workspaceId) {
 
 function resolveFile(userId, workspaceId, relativePath) {
   const base = workspaceDir(userId, workspaceId);
-  const normalized = path.posix.normalize(String(relativePath || '').replace(/\\/g, '/')).replace(/^\/+/, '');
-  if (!normalized || normalized.startsWith('../') || normalized.includes('/../')) {
+  const raw = String(relativePath || '').replace(/\\/g, '/');
+  const segments = raw.split('/');
+  if (!raw || raw.startsWith('/') || /^[A-Za-z]:\//.test(raw) || segments.includes('..') || segments.includes('')) {
+    throw Object.assign(new Error('Invalid workspace path.'), { status: 400 });
+  }
+  const normalized = path.posix.normalize(raw);
+  if (!normalized || normalized === '.' || normalized.startsWith('../') || normalized.includes('/../')) {
     throw Object.assign(new Error('Invalid workspace path.'), { status: 400 });
   }
   const resolved = path.resolve(base, normalized);
