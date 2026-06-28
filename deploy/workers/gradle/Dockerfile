@@ -1,7 +1,7 @@
 FROM node:20-bookworm-slim
 
 ARG GRADLE_VERSION=8.10.2
-ARG ANDROID_COMMANDLINE_TOOLS_URL=""
+ARG ANDROID_COMMANDLINE_TOOLS_URL=https://dl.google.com/android/repository/commandlinetools-linux-14742923_latest.zip
 ENV DEBIAN_FRONTEND=noninteractive \
     ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
@@ -17,16 +17,19 @@ RUN apt-get update \
     && unzip -q /tmp/gradle.zip -d /opt \
     && mv "/opt/gradle-${GRADLE_VERSION}" /opt/gradle \
     && rm /tmp/gradle.zip \
-    && mkdir -p /opt/android-sdk/cmdline-tools /cache/gradle /work
-
-RUN if [ -n "$ANDROID_COMMANDLINE_TOOLS_URL" ]; then \
-      curl -fsSL "$ANDROID_COMMANDLINE_TOOLS_URL" -o /tmp/android-tools.zip \
-      && unzip -q /tmp/android-tools.zip -d /tmp/android-tools \
-      && mkdir -p /opt/android-sdk/cmdline-tools/latest \
-      && cp -a /tmp/android-tools/cmdline-tools/. /opt/android-sdk/cmdline-tools/latest/ \
-      && yes | sdkmanager --licenses >/dev/null \
-      && sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"; \
-    fi
+    && mkdir -p /opt/android-sdk/cmdline-tools /cache/gradle /work \
+    && curl -fsSL "$ANDROID_COMMANDLINE_TOOLS_URL" -o /tmp/android-tools.zip \
+    && unzip -q /tmp/android-tools.zip -d /tmp/android-tools \
+    && mkdir -p /opt/android-sdk/cmdline-tools/latest \
+    && cp -a /tmp/android-tools/cmdline-tools/. /opt/android-sdk/cmdline-tools/latest/ \
+    && rm -rf /tmp/android-tools /tmp/android-tools.zip \
+    && yes | sdkmanager --licenses >/dev/null \
+    && sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" \
+    && gradle --version >/dev/null \
+    && sdkmanager --version >/dev/null \
+    && test -x /opt/android-sdk/platform-tools/adb \
+    && test -d /opt/android-sdk/platforms/android-35 \
+    && test -x /opt/android-sdk/build-tools/35.0.0/aapt2
 
 WORKDIR /app
 COPY package.json ./
