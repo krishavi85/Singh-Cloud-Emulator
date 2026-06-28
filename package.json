@@ -8,10 +8,10 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "check": "node scripts/check-syntax.js",
-    "reality-check": "node scripts/reality-check.js",
+    "verify-files": "node scripts/verify-files.js",
     "test": "node --test test/*.test.js",
     "smoke": "node scripts/smoke-test.js",
-    "validate": "npm run check && npm run reality-check && npm test && npm run smoke",
+    "validate": "npm run check && npm run verify-files && npm test && npm run smoke",
     "hash-password": "node scripts/hash-password.js"
   },
   "engines": {
