@@ -35,6 +35,12 @@ function frameAncestors() {
   return configured.length ? ["'self'", ...configured] : ["'none'"];
 }
 
+function parseAsJson(req) {
+  const rawCapturePath = /^\/api\/platform\/workers\/captures\/[^/]+\/har$/;
+  if (rawCapturePath.test(req.path)) return false;
+  return Boolean(req.is('application/json'));
+}
+
 function createApplication() {
   auth.assertAuthConfiguration();
 
@@ -95,6 +101,7 @@ function createApplication() {
   app.use(cors({ origin: false }));
   app.use(express.json({
     limit: '1mb',
+    type: parseAsJson,
     verify(req, _res, buffer) {
       req.rawBody = Buffer.from(buffer);
     }
