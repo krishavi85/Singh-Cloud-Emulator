@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "check": "node --check server/index.js && node --check server/secure-app.js && node --check server/web-application.js && node --check server/websocket-auth.js && node --check server/auth.js && node --check server/audit.js && node --check server/rate-limits.js && node --check server/device-access.js && node --check server/device-routes.js && node --check server/apk-scanner.js && node --check server/apk-routes.js && node --check server/retention.js && node --check server/adb.js && node --check server/emulator.js && node --check public/app.js && node --check public/client.js && node --check public/login.js",
+    "check": "node --check server/index.js && node --check server/secure-app.js && node --check server/web-application.js && node --check server/websocket-auth.js && node --check server/auth.js && node --check server/audit.js && node --check server/rate-limits.js && node --check server/device-access.js && node --check server/api-routes.js && node --check server/device-routes.js && node --check server/apk-scanner.js && node --check server/apk-routes.js && node --check server/retention.js && node --check server/adb.js && node --check server/emulator.js && node --check public/app.js && node --check public/client.js && node --check public/session.js && node --check public/login.js",
     "hash-password": "node scripts/hash-password.js"
   },
   "engines": {
