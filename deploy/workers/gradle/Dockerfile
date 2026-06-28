@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 
 ARG GRADLE_VERSION=8.10.2
 ARG ANDROID_COMMANDLINE_TOOLS_URL
@@ -26,6 +26,7 @@ RUN apt-get update \
     && rm -rf /tmp/android-tools /tmp/android-tools.zip \
     && yes | sdkmanager --licenses >/dev/null \
     && sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" \
+    && node --version \
     && gradle --version >/dev/null \
     && sdkmanager --version >/dev/null \
     && test -x /opt/android-sdk/platform-tools/adb \
