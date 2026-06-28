@@ -6,6 +6,7 @@ function registerApiRoutes(options) {
   const shareRoutes = require('./share-routes');
   const workerRoutes = require('./worker-routes');
   const buildWorkerRoutes = require('./build-worker-routes');
+  const captureWorkerRoutes = require('./capture-worker-routes');
   const artifactRoutes = require('./artifact-routes');
   const workspaceArchiveRoutes = require('./workspace-archive-routes');
   const gitRoutes = require('./git-routes');
@@ -22,6 +23,7 @@ function registerApiRoutes(options) {
   shareRoutes.registerShareRoutes(options.app);
   workerRoutes.registerWorkerRoutes(options.app);
   buildWorkerRoutes.registerBuildWorkerRoutes(options.app);
+  captureWorkerRoutes.registerCaptureWorkerRoutes(options.app);
   artifactRoutes.registerArtifactRoutes(options.app);
   workspaceArchiveRoutes.registerWorkspaceArchiveRoutes(options.app);
   gitRoutes.registerGitRoutes(options.app);
