@@ -45,16 +45,14 @@ function registerEquivalenceRoutes(app) {
   }));
 
   app.get('/api/equivalence/appium/sessions/:id/source', asyncRoute(async (req, res) => {
-    const body = await appium.source(req.user, req.params.id);
-    res.json(body);
+    res.json(await appium.source(req.user, req.params.id));
   }));
 
   app.get('/api/equivalence/appium/sessions/:id/screenshot', asyncRoute(async (req, res) => {
     const body = await appium.screenshot(req.user, req.params.id);
-    const encoded = body.value || '';
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'no-store');
-    res.send(Buffer.from(encoded, 'base64'));
+    res.send(Buffer.from(body.value || '', 'base64'));
   }));
 
   app.get('/api/equivalence/network-captures', asyncRoute(async (req, res) => {
@@ -81,6 +79,13 @@ function registerEquivalenceRoutes(app) {
     res.status(201).json({ artifact, downloadPath: `/api/equivalence/profiles/artifacts/${encodeURIComponent(artifact.filename)}` });
   }));
 
+  app.post('/api/equivalence/profiles/simpleperf', asyncRoute(async (req, res) => {
+    const serial = await resolveSerial(req.user, req.body.serial);
+    const artifact = await profiler.collectSimpleperf(req.user.id, serial, req.body.packageName, req.body.durationSeconds);
+    await auditRequest(req, 'profile.simpleperf.collect', 'success', { serial, packageName: artifact.packageName, artifact: artifact.filename });
+    res.status(201).json({ artifact, downloadPath: `/api/equivalence/profiles/artifacts/${encodeURIComponent(artifact.filename)}` });
+  }));
+
   app.post('/api/equivalence/profiles/heap', asyncRoute(async (req, res) => {
     const serial = await resolveSerial(req.user, req.body.serial);
     const artifact = await profiler.collectHeapDump(req.user.id, serial, req.body.packageName);
@@ -98,7 +103,10 @@ function registerEquivalenceRoutes(app) {
   app.get('/api/equivalence/profiles/artifacts/:filename', asyncRoute(async (req, res) => {
     const data = await profiler.readArtifact(req.user.id, req.params.filename);
     const extension = path.extname(req.params.filename);
-    res.setHeader('Content-Type', extension === '.hprof' ? 'application/octet-stream' : 'application/vnd.google.perfetto.trace');
+    const contentType = extension === '.perfetto-trace'
+      ? 'application/vnd.google.perfetto.trace'
+      : 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.params.filename)}"`);
     res.setHeader('Cache-Control', 'no-store');
     res.send(data);
