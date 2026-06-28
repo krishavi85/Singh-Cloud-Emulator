@@ -32,6 +32,7 @@ async function findFiles(directory, extension, results = []) {
 
 function taskFor(build) {
   const variant = String(build.variant || 'debug').replace(/[^A-Za-z0-9]/g, '');
+  if (!variant) throw new Error('Build variant is invalid.');
   const capitalized = variant.charAt(0).toUpperCase() + variant.slice(1);
   return build.format === 'aab' ? `bundle${capitalized}` : `assemble${capitalized}`;
 }
@@ -49,15 +50,38 @@ async function runGradle(directory, build) {
   const args = [task, '--no-daemon', '--stacktrace', '--console=plain', '--warning-mode=all'];
   const logs = [];
   const maxLogBytes = Math.max(1_000_000, Number(process.env.BUILD_LOG_LIMIT_BYTES || 5_000_000));
+  let pendingLog = '';
+  let child = null;
+  let cancelled = false;
+
+  async function heartbeat(progress = 0) {
+    const chunk = pendingLog;
+    pendingLog = '';
+    const response = await api(`/api/platform/workers/builds/${encodeURIComponent(build.id)}/heartbeat`, {
+      method: 'POST',
+      json: {
+        workerId,
+        leaseSeconds: Math.ceil(timeoutMs / 1000) + 120,
+        progress,
+        logChunk: chunk.slice(-100_000)
+      }
+    });
+    if (response.cancelled && child) {
+      cancelled = true;
+      if (process.platform === 'win32') child.kill('SIGKILL');
+      else process.kill(-child.pid, 'SIGKILL');
+    }
+  }
 
   await new Promise((resolve, reject) => {
-    const child = spawn(wrapper, args, {
+    child = spawn(wrapper, args, {
       cwd: directory,
       env: {
         ...process.env,
         GRADLE_USER_HOME: gradleUserHome,
         CI: 'true',
-        TERM: 'dumb'
+        TERM: 'dumb',
+        JAVA_TOOL_OPTIONS: process.env.JAVA_TOOL_OPTIONS || '-Dfile.encoding=UTF-8'
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -67,25 +91,34 @@ async function runGradle(directory, build) {
     const append = (chunk) => {
       const value = chunk.toString('utf8');
       bytes += Buffer.byteLength(value);
+      pendingLog += value;
+      if (pendingLog.length > 250_000) pendingLog = pendingLog.slice(-250_000);
       if (bytes <= maxLogBytes) logs.push(value);
     };
     child.stdout.on('data', append);
     child.stderr.on('data', append);
-    const timer = setTimeout(() => {
+    const heartbeatTimer = setInterval(() => heartbeat(25).catch((error) => console.error('Build heartbeat:', error.message)), 15_000);
+    const timeoutTimer = setTimeout(() => {
       if (process.platform === 'win32') child.kill('SIGKILL');
       else process.kill(-child.pid, 'SIGKILL');
       reject(new Error(`Build exceeded ${Math.round(timeoutMs / 1000)} seconds.`));
     }, timeoutMs);
+    const cleanup = () => {
+      clearInterval(heartbeatTimer);
+      clearTimeout(timeoutTimer);
+    };
     child.on('error', (error) => {
-      clearTimeout(timer);
+      cleanup();
       reject(error);
     });
     child.on('exit', (code, signal) => {
-      clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(`Gradle exited with code ${code ?? 'null'}${signal ? ` (${signal})` : ''}.`));
+      cleanup();
+      if (cancelled) return reject(new Error('Build was cancelled.'));
+      if (code === 0) return resolve();
+      reject(new Error(`Gradle exited with code ${code ?? 'null'}${signal ? ` (${signal})` : ''}.`));
     });
   });
+  await heartbeat(90);
   return logs.join('').slice(-maxLogBytes);
 }
 
@@ -112,14 +145,14 @@ async function buildOne(build) {
       `/api/platform/builds/${encodeURIComponent(build.id)}/artifact?name=${encodeURIComponent(path.basename(artifact))}`,
       artifact,
       build.format === 'apk' ? 'application/vnd.android.package-archive' : 'application/octet-stream',
-      { 'X-Artifact-SHA256': digest, 'X-Build-Log': Buffer.from(log).toString('base64').slice(0, 7000) }
+      { 'X-Artifact-SHA256': digest }
     );
-    console.log(`Build ${build.id} completed: ${result.artifact?.id || 'artifact uploaded'}`);
+    console.log(`Build ${build.id} completed: ${result.artifact?.id || 'artifact uploaded'} (${log.length} log characters)`);
   } catch (error) {
     console.error(`Build ${build.id} failed:`, error.message);
-    await api(`/api/platform/builds/${encodeURIComponent(build.id)}/complete`, {
+    await api(`/api/platform/workers/builds/${encodeURIComponent(build.id)}/fail`, {
       method: 'POST',
-      json: { success: false, log: error.stack || error.message, workerId }
+      json: { error: error.message, log: error.stack || error.message, workerId }
     }).catch((reportError) => console.error('Failed to report build failure:', reportError.message));
   } finally {
     await fsp.rm(directory, { recursive: true, force: true });
@@ -129,7 +162,10 @@ async function buildOne(build) {
 async function main() {
   for (;;) {
     try {
-      const body = await api('/api/platform/builds/claim', { method: 'POST', json: { workerId, leaseSeconds: Math.ceil(timeoutMs / 1000) + 120 } });
+      const body = await api('/api/platform/workers/builds/claim', {
+        method: 'POST',
+        json: { workerId, leaseSeconds: Math.ceil(timeoutMs / 1000) + 120 }
+      });
       if (!body.build) {
         await sleep(pollMs);
         continue;
