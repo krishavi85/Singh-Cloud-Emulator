@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const postgres = require('./postgres-state');
 
 const dataFile = path.resolve(process.env.PLATFORM_DATA_FILE || path.join(__dirname, '..', 'data', 'platform.json'));
 let queue = Promise.resolve();
@@ -16,9 +17,17 @@ function defaultProfiles() {
   ];
 }
 
+function defaultPlans() {
+  return [
+    { id: 'free', name: 'Free', monthlyMinutes: 60, concurrentSessions: 1, monthlyBuildMinutes: 30, storageBytes: 2_000_000_000 },
+    { id: 'pro', name: 'Pro', monthlyMinutes: 2000, concurrentSessions: 3, monthlyBuildMinutes: 1000, storageBytes: 50_000_000_000 },
+    { id: 'team', name: 'Team', monthlyMinutes: 10000, concurrentSessions: 10, monthlyBuildMinutes: 5000, storageBytes: 250_000_000_000 }
+  ];
+}
+
 function emptyState() {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     profiles: defaultProfiles(),
     sessions: [],
     shares: [],
@@ -29,31 +38,38 @@ function emptyState() {
     apps: [],
     usage: [],
     organizations: [],
+    memberships: [],
+    apiKeys: [],
+    subscriptions: [],
+    invoices: [],
+    notifications: [],
+    workers: [],
     appiumSessions: [],
     networkCaptures: [],
-    plans: [
-      { id: 'free', name: 'Free', monthlyMinutes: 60, concurrentSessions: 1 },
-      { id: 'pro', name: 'Pro', monthlyMinutes: 2000, concurrentSessions: 3 },
-      { id: 'team', name: 'Team', monthlyMinutes: 10000, concurrentSessions: 10 }
-    ]
+    plans: defaultPlans()
   };
 }
 
 function normalizeState(state) {
   const normalized = state && typeof state === 'object' ? state : {};
-  const arrayKeys = ['profiles', 'sessions', 'shares', 'recordings', 'workspaces', 'builds', 'artifacts', 'apps', 'usage', 'organizations', 'appiumSessions', 'networkCaptures', 'plans'];
+  const arrayKeys = [
+    'profiles', 'sessions', 'shares', 'recordings', 'workspaces', 'builds', 'artifacts', 'apps',
+    'usage', 'organizations', 'memberships', 'apiKeys', 'subscriptions', 'invoices', 'notifications',
+    'workers', 'appiumSessions', 'networkCaptures', 'plans'
+  ];
   for (const key of arrayKeys) if (!Array.isArray(normalized[key])) normalized[key] = [];
 
   const existingProfiles = new Set(normalized.profiles.map((profile) => profile.id));
   for (const profile of defaultProfiles()) {
     if (!existingProfiles.has(profile.id)) normalized.profiles.push(profile);
   }
-  if (!normalized.plans.length) normalized.plans = emptyState().plans;
-  normalized.schemaVersion = 2;
+  if (!normalized.plans.length) normalized.plans = defaultPlans();
+  normalized.schemaVersion = 3;
   return normalized;
 }
 
 async function ensureFile() {
+  if (postgres.configured()) return;
   await fs.mkdir(path.dirname(dataFile), { recursive: true, mode: 0o700 });
   try {
     await fs.access(dataFile);
@@ -63,18 +79,21 @@ async function ensureFile() {
 }
 
 async function readState() {
+  if (postgres.configured()) return postgres.readState(emptyState(), normalizeState);
   await ensureFile();
   const raw = await fs.readFile(dataFile, 'utf8');
   return normalizeState(JSON.parse(raw));
 }
 
 async function writeState(state) {
+  if (postgres.configured()) return postgres.writeState(state, emptyState(), normalizeState);
   const temp = `${dataFile}.${process.pid}.${Date.now()}.tmp`;
   await fs.writeFile(temp, `${JSON.stringify(normalizeState(state), null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
   await fs.rename(temp, dataFile);
 }
 
 function transact(mutator) {
+  if (postgres.configured()) return postgres.transact(emptyState(), normalizeState, mutator);
   const operation = queue.then(async () => {
     const state = await readState();
     const result = await mutator(state);
@@ -94,7 +113,14 @@ function now() {
 }
 
 function owned(record, user) {
-  return user.role === 'admin' || record.userId === user.id;
+  if (user.role === 'admin') return true;
+  if (record.userId && record.userId === user.id) return true;
+  if (record.organizationId && user.organizationId && record.organizationId === user.organizationId) return true;
+  return false;
 }
 
-module.exports = { dataFile, emptyState, id, normalizeState, now, owned, readState, transact };
+function backend() {
+  return postgres.configured() ? 'postgresql' : 'json';
+}
+
+module.exports = { backend, dataFile, emptyState, id, normalizeState, now, owned, readState, transact, writeState };
