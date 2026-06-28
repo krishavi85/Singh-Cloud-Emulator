@@ -8,7 +8,7 @@ services:
         ANDROID_COMMANDLINE_TOOLS_URL: ${ANDROID_COMMANDLINE_TOOLS_URL:-}
     restart: unless-stopped
     environment:
-      SCE_API_BASE: ${WORKER_API_BASE:-http://api:8080}
+      SCE_API_BASE: ${WORKER_API_BASE:?Set WORKER_API_BASE to the public HTTPS control-plane origin}
       SCE_API_KEY: ${BUILD_WORKER_API_KEY:?Set BUILD_WORKER_API_KEY}
       SCE_WORKER_ID: ${BUILD_WORKER_ID:-gradle-worker-01}
       BUILD_TIMEOUT_MS: ${BUILD_TIMEOUT_MS:-1200000}
@@ -26,7 +26,7 @@ services:
     pids_limit: 1024
     mem_limit: 8g
     cpus: 4.0
-    networks: [worker_net]
+    networks: [worker_net, egress]
 
   traffic-worker:
     build:
@@ -34,7 +34,7 @@ services:
       dockerfile: deploy/workers/traffic/Dockerfile
     restart: unless-stopped
     environment:
-      SCE_API_BASE: ${WORKER_API_BASE:-http://api:8080}
+      SCE_API_BASE: ${WORKER_API_BASE:?Set WORKER_API_BASE to the public HTTPS control-plane origin}
       SCE_API_KEY: ${CAPTURE_WORKER_API_KEY:?Set CAPTURE_WORKER_API_KEY}
       SCE_WORKER_ID: ${CAPTURE_WORKER_ID:-traffic-worker-01}
       ADB_SERVER_SOCKET: ${ADB_SERVER_SOCKET:-tcp:android-worker:5037}
@@ -51,12 +51,13 @@ services:
     pids_limit: 512
     mem_limit: 2g
     cpus: 2.0
-    networks: [worker_net]
+    networks: [worker_net, egress]
 
 networks:
   worker_net:
     external: true
     name: singh-worker-net
+  egress:
 
 volumes:
   gradle_cache:
