@@ -1,0 +1,24 @@
+{
+  "name": "singh-cloud-emulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Android development dashboard",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "check": "node --check server/index.js && node --check server/adb.js && node --check server/emulator.js && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {}
+}
