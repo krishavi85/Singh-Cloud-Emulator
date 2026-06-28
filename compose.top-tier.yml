@@ -57,7 +57,7 @@ services:
       redis:
         condition: service_healthy
       minio:
-        condition: service_healthy
+        condition: service_started
       clamav:
         condition: service_healthy
     healthcheck:
@@ -88,15 +88,15 @@ services:
     image: ${REDIS_IMAGE:-redis:7-alpine}
     restart: unless-stopped
     command: [redis-server, --appendonly, "yes", --requirepass, "${REDIS_PASSWORD:?Set REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: [CMD-SHELL, "redis-cli -a '$$REDIS_PASSWORD' ping | grep PONG"]
+      test: [CMD-SHELL, "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 15
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
     networks: [backend]
 
   minio:
@@ -110,11 +110,6 @@ services:
       - object_data:/data
     ports:
       - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
-    healthcheck:
-      test: [CMD, mc, ready, local]
-      interval: 10s
-      timeout: 5s
-      retries: 15
     networks: [backend]
 
   clamav:
