@@ -3,6 +3,7 @@ const { promisify } = require('node:util');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { removeExpiredFiles } = require('./retention');
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(process.env.PROFILE_ARTIFACT_DIR || path.join(__dirname, '..', 'data', 'profiles'));
@@ -87,5 +88,15 @@ async function readArtifact(userId, filename) {
   const target = path.join(directory, safe);
   return fs.readFile(target);
 }
+
+function startArtifactRetention() {
+  const hours = Math.max(1, Number(process.env.PROFILE_RETENTION_HOURS || 24));
+  const sweep = () => removeExpiredFiles(root, hours * 60 * 60 * 1000).catch((error) => console.error('Profile retention failed:', error));
+  const timer = setInterval(sweep, Math.min(hours, 1) * 60 * 60 * 1000);
+  timer.unref();
+  sweep();
+}
+
+startArtifactRetention();
 
 module.exports = { collectHeapDump, collectPerfetto, dumpUiHierarchy, readArtifact };
