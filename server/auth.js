@@ -11,15 +11,12 @@ function parseUsers() {
 
   let raw = process.env.USERS_JSON;
   if (!raw && process.env.AUTH_USERS_FILE) {
-    const filePath = path.resolve(process.env.AUTH_USERS_FILE);
-    raw = fs.readFileSync(filePath, 'utf8');
+    raw = fs.readFileSync(path.resolve(process.env.AUTH_USERS_FILE), 'utf8');
   }
   if (!raw) throw new Error('USERS_JSON or AUTH_USERS_FILE must be configured.');
 
   const users = JSON.parse(raw);
-  if (!Array.isArray(users) || users.length === 0) {
-    throw new Error('At least one user must be configured.');
-  }
+  if (!Array.isArray(users) || users.length === 0) throw new Error('At least one user must be configured.');
 
   cachedUsers = users.map((user) => {
     const normalized = {
@@ -32,6 +29,9 @@ function parseUsers() {
     if (!/^[A-Za-z0-9_-]{2,64}$/.test(normalized.id)) throw new Error(`Invalid user id: ${normalized.id}`);
     if (!normalized.email.includes('@')) throw new Error(`Invalid user email: ${normalized.email}`);
     if (!/^\$2[aby]\$/.test(normalized.passwordHash)) throw new Error(`User ${normalized.email} must use a bcrypt password hash.`);
+    if (process.env.NODE_ENV === 'production' && normalized.devices.length === 0) {
+      throw new Error(`Production user ${normalized.email} must have at least one assigned device.`);
+    }
     return normalized;
   });
 
@@ -114,15 +114,21 @@ function verifyToken(token) {
   return user;
 }
 
+function unauthorized(req, res, message) {
+  const isPage = req.method === 'GET' && !req.originalUrl.startsWith('/api/') && req.accepts('html');
+  if (isPage) return res.redirect('/login');
+  return res.status(401).json({ ok: false, error: message });
+}
+
 function requireAuth(req, res, next) {
   try {
     const token = req.cookies?.[COOKIE_NAME];
-    if (!token) return res.status(401).json({ ok: false, error: 'Authentication required.' });
+    if (!token) return unauthorized(req, res, 'Authentication required.');
     req.user = verifyToken(token);
     next();
   } catch {
     clearSession(res);
-    res.status(401).json({ ok: false, error: 'Session expired or invalid.' });
+    unauthorized(req, res, 'Session expired or invalid.');
   }
 }
 
