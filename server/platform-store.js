@@ -12,8 +12,8 @@ function defaultProfiles() {
     { id: 'pixel-tablet-api-35', name: 'Pixel Tablet', platform: 'android', apiLevel: 35, width: 1600, height: 2560, density: 320, orientation: 'landscape', enabled: true },
     { id: 'android-tv-api-35', name: 'Android TV', platform: 'android-tv', apiLevel: 35, width: 1920, height: 1080, density: 320, orientation: 'landscape', enabled: true },
     { id: 'wear-os-api-35', name: 'Wear OS', platform: 'wear-os', apiLevel: 35, width: 454, height: 454, density: 326, orientation: 'portrait', enabled: true },
-    { id: 'iphone-16-ios', name: 'iPhone 16 Simulator', platform: 'ios', apiLevel: null, width: 1179, height: 2556, density: 460, orientation: 'portrait', enabled: true, requiresMacWorker: true },
-    { id: 'ipad-pro-ios', name: 'iPad Pro Simulator', platform: 'ipados', apiLevel: null, width: 2048, height: 2732, density: 264, orientation: 'portrait', enabled: true, requiresMacWorker: true }
+    { id: 'iphone-16-ios', name: 'iPhone 16 Simulator', platform: 'ios', deviceFamily: 'iphone', apiLevel: null, width: 1179, height: 2556, density: 460, orientation: 'portrait', enabled: true, requiresMacWorker: true },
+    { id: 'ipad-pro-ios', name: 'iPad Pro Simulator', platform: 'ios', deviceFamily: 'ipad', apiLevel: null, width: 2048, height: 2732, density: 264, orientation: 'portrait', enabled: true, requiresMacWorker: true }
   ];
 }
 
@@ -27,7 +27,7 @@ function defaultPlans() {
 
 function emptyState() {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     profiles: defaultProfiles(),
     sessions: [],
     shares: [],
@@ -61,12 +61,17 @@ function normalizeState(state) {
   ];
   for (const key of arrayKeys) if (!Array.isArray(normalized[key])) normalized[key] = [];
 
-  const existingProfiles = new Set(normalized.profiles.map((profile) => profile.id));
   for (const profile of defaultProfiles()) {
-    if (!existingProfiles.has(profile.id)) normalized.profiles.push(profile);
+    const existing = normalized.profiles.find((item) => item.id === profile.id);
+    if (!existing) normalized.profiles.push(profile);
+    else if (profile.requiresMacWorker) {
+      existing.platform = 'ios';
+      existing.deviceFamily = profile.deviceFamily;
+      existing.requiresMacWorker = true;
+    }
   }
   if (!normalized.plans.length) normalized.plans = defaultPlans();
-  normalized.schemaVersion = 3;
+  normalized.schemaVersion = 4;
   return normalized;
 }
 
