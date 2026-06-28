@@ -108,10 +108,12 @@ document.querySelector('#captureList').addEventListener('click', async (event) =
 });
 
 async function collect(endpoint, payload) {
+  document.querySelectorAll('[data-profile-download]').forEach((element) => element.remove());
   const body = await request(endpoint, { method: 'POST', body: JSON.stringify(payload) });
   document.querySelector('#inspectionOutput').textContent = JSON.stringify(body, null, 2);
   if (body.downloadPath) {
     const link = document.createElement('a');
+    link.dataset.profileDownload = 'true';
     link.href = body.downloadPath;
     link.textContent = `Download ${body.artifact.filename}`;
     link.style.display = 'inline-block';
@@ -120,18 +122,23 @@ async function collect(endpoint, payload) {
   }
 }
 
-document.querySelector('#collectPerfetto').addEventListener('click', () => collect('/api/equivalence/profiles/perfetto', {
-  serial: document.querySelector('#profileSerial').value.trim(),
-  durationSeconds: document.querySelector('#profileDuration').value
-}).catch((error) => notify(error.message)));
+function profileInput() {
+  return {
+    serial: document.querySelector('#profileSerial').value.trim(),
+    packageName: document.querySelector('#profilePackage').value.trim(),
+    durationSeconds: document.querySelector('#profileDuration').value
+  };
+}
 
-document.querySelector('#collectHeap').addEventListener('click', () => collect('/api/equivalence/profiles/heap', {
-  serial: document.querySelector('#profileSerial').value.trim(),
-  packageName: document.querySelector('#profilePackage').value.trim()
-}).catch((error) => notify(error.message)));
+document.querySelector('#collectPerfetto').addEventListener('click', () => collect('/api/equivalence/profiles/perfetto', profileInput()).catch((error) => notify(error.message)));
+
+document.querySelector('#collectSimpleperf').addEventListener('click', () => collect('/api/equivalence/profiles/simpleperf', profileInput()).catch((error) => notify(error.message)));
+
+document.querySelector('#collectHeap').addEventListener('click', () => collect('/api/equivalence/profiles/heap', profileInput()).catch((error) => notify(error.message)));
 
 document.querySelector('#loadHierarchy').addEventListener('click', async () => {
   try {
+    document.querySelectorAll('[data-profile-download]').forEach((element) => element.remove());
     const serial = document.querySelector('#profileSerial').value.trim();
     const xml = await request(`/api/equivalence/layout?serial=${encodeURIComponent(serial)}`);
     document.querySelector('#inspectionOutput').textContent = xml;
