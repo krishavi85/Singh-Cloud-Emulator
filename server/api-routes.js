@@ -1,6 +1,7 @@
 function registerApiRoutes(options) {
   const deviceRoutes = require('./device-routes');
   const apkRoutes = require('./apk-routes');
+  const statusRoutes = require('./status-routes');
   const platformRoutes = require('./platform-routes');
   const automationRoutes = require('./automation-routes');
   const shareRoutes = require('./share-routes');
@@ -18,6 +19,7 @@ function registerApiRoutes(options) {
 
   deviceRoutes.registerDeviceRoutes(options.app);
   apkRoutes.registerApkRoutes(options.app, options.upload);
+  statusRoutes.registerStatusRoutes(options.app);
   platformRoutes.registerPlatformRoutes(options.app);
   automationRoutes.registerAutomationRoutes(options.app);
   shareRoutes.registerShareRoutes(options.app);
