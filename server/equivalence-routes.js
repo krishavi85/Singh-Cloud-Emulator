@@ -27,7 +27,8 @@ function registerEquivalenceRoutes(app) {
   app.get('/api/equivalence/sessions/:id/links', asyncRoute(async (req, res) => {
     const state = await store.readState();
     const session = ownedSession(state, req.user, req.params.id);
-    res.json({ sessionId: session.id, links: services.sessionLinks(session) });
+    const profile = state.profiles.find((item) => item.id === session.profileId) || {};
+    res.json({ sessionId: session.id, platform: profile.platform || null, links: services.sessionLinks(session, profile) });
   }));
 
   app.post('/api/equivalence/appium/sessions', asyncRoute(async (req, res) => {
