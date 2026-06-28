@@ -1,6 +1,10 @@
+const path = require('node:path');
 const store = require('./platform-store');
 
 function registerShareRoutes(app) {
+  app.get('/share/:token', (_req, res) => res.sendFile(path.resolve(__dirname, '..', 'public', 'share.html')));
+  app.get('/embed/:token', (_req, res) => res.sendFile(path.resolve(__dirname, '..', 'public', 'share.html')));
+
   app.get('/api/platform/share/:token', async (req, res, next) => {
     try {
       const state = await store.readState();
