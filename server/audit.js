@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
@@ -17,7 +18,7 @@ function redact(value) {
   return clone;
 }
 
-function key() {
+function auditKey() {
   const value = process.env.AUDIT_HMAC_KEY || '';
   if (process.env.NODE_ENV === 'production' && value.length < 32) {
     throw new Error('AUDIT_HMAC_KEY must contain at least 32 characters in production.');
@@ -28,6 +29,22 @@ function key() {
 function currentFile() {
   const date = new Date().toISOString().slice(0, 10);
   return path.join(auditDir, `audit-${date}.jsonl`);
+}
+
+function restorePreviousHash() {
+  fsSync.mkdirSync(auditDir, { recursive: true, mode: 0o700 });
+  const files = fsSync.readdirSync(auditDir)
+    .filter((name) => /^audit-\d{4}-\d{2}-\d{2}\.jsonl$/.test(name))
+    .sort();
+  if (!files.length) return;
+  const lines = fsSync.readFileSync(path.join(auditDir, files.at(-1)), 'utf8').trim().split(/\r?\n/).filter(Boolean);
+  if (!lines.length) return;
+  try {
+    const last = JSON.parse(lines.at(-1));
+    if (/^[a-f0-9]{64}$/.test(last.hash || '')) previousHash = last.hash;
+  } catch {
+    throw new Error('The latest audit log is not valid JSON Lines data.');
+  }
 }
 
 async function writeAudit(event) {
@@ -44,18 +61,17 @@ async function writeAudit(event) {
     previousHash
   };
   const canonical = JSON.stringify(base);
-  const hash = crypto.createHmac('sha256', key()).update(canonical).digest('hex');
-  previousHash = hash;
+  const hash = crypto.createHmac('sha256', auditKey()).update(canonical).digest('hex');
   const record = JSON.stringify({ ...base, hash });
-  await fs.mkdir(auditDir, { recursive: true });
+  await fs.mkdir(auditDir, { recursive: true, mode: 0o700 });
   await fs.appendFile(currentFile(), `${record}\n`, { encoding: 'utf8', mode: 0o600 });
+  previousHash = hash;
 }
 
 function audit(event) {
-  writeQueue = writeQueue.then(() => writeAudit(event)).catch((error) => {
-    console.error('Audit write failed:', error);
-  });
-  return writeQueue;
+  const operation = writeQueue.then(() => writeAudit(event));
+  writeQueue = operation.catch((error) => console.error('Audit write failed:', error));
+  return operation;
 }
 
 function requestContext(req) {
@@ -76,5 +92,8 @@ function requestIdMiddleware(req, res, next) {
   res.setHeader('x-request-id', req.requestId);
   next();
 }
+
+auditKey();
+restorePreviousHash();
 
 module.exports = { audit, auditRequest, requestContext, requestIdMiddleware };
