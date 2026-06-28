@@ -84,6 +84,7 @@ networks:
   backend:
     internal: true
   worker_net:
+    name: singh-worker-net
     internal: true
 
 volumes:
