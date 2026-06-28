@@ -24,10 +24,8 @@ jobs:
           node-version: "24"
       - name: Install dependencies
         run: npm install --ignore-scripts --no-fund
-      - name: Validate source, references, tests and live startup
+      - name: Validate source, required files, tests and live startup
         run: npm run validate
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
       - name: Prepare production template
         run: cp deploy/top-tier.env.example deploy/top-tier.env
       - name: Validate deployment manifests
@@ -50,6 +48,10 @@ jobs:
           docker compose -f compose.equivalence.yml config >/dev/null
           docker compose -f compose.workers.yml config >/dev/null
           docker compose -f compose.top-tier.yml config >/dev/null
+      - name: Create machine-readable dependency audit
+        run: npm audit --omit=dev --json > npm-audit.json || true
+      - name: Enforce high-severity dependency policy
+        run: node scripts/validate-audit.js npm-audit.json
 
   api-image:
     name: Build production API image
@@ -58,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build API image
-        run: docker build --pull --tag singh-cloud-emulator:ci .
+        run: docker build --pull --progress=plain --tag singh-cloud-emulator:ci .
 
   runtime-images:
     name: Build ${{ matrix.name }} image
@@ -79,4 +81,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and verify image
-        run: docker build --pull --file "${{ matrix.dockerfile }}" --tag "sce-${{ strategy.job-index }}:ci" .
+        run: docker build --pull --progress=plain --file "${{ matrix.dockerfile }}" --tag "sce-${{ strategy.job-index }}:ci" .
