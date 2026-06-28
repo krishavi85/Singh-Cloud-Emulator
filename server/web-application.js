@@ -8,10 +8,32 @@ const express = require('express');
 const helmet = require('helmet');
 const multer = require('multer');
 const auth = require('./auth');
+const metrics = require('./metrics');
 const { audit, auditRequest, requestIdMiddleware } = require('./audit');
 const { apiLimiter, loginLimiter } = require('./rate-limits');
 const { startRetention } = require('./retention');
 const { registerApiRoutes } = require('./api-routes');
+const { registerPublicBillingWebhook } = require('./billing-routes');
+const { report: systemReport } = require('./system-routes');
+
+function secureTokenEqual(received, expected) {
+  const left = Buffer.from(String(received || ''));
+  const right = Buffer.from(String(expected || ''));
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function metricsAuthorized(req) {
+  const expected = process.env.METRICS_BEARER_TOKEN || '';
+  if (!expected) return process.env.NODE_ENV !== 'production' || String(process.env.METRICS_PUBLIC || 'false').toLowerCase() === 'true';
+  const header = String(req.get('authorization') || '');
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return Boolean(match && secureTokenEqual(match[1].trim(), expected));
+}
+
+function frameAncestors() {
+  const configured = String(process.env.EMBED_ALLOWED_ORIGINS || '').split(',').map((item) => item.trim()).filter(Boolean);
+  return configured.length ? ["'self'", ...configured] : ["'none'"];
+}
 
 function createApplication() {
   auth.assertAuthConfiguration();
@@ -48,8 +70,10 @@ function createApplication() {
   app.disable('x-powered-by');
   app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
   app.use(requestIdMiddleware);
+  app.use(metrics.middleware);
   app.use(helmet({
     crossOriginEmbedderPolicy: false,
+    frameguard: false,
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
@@ -57,7 +81,7 @@ function createApplication() {
         connectSrc: ["'self'", 'ws:', 'wss:'],
         fontSrc: ["'self'"],
         formAction: ["'self'"],
-        frameAncestors: ["'none'"],
+        frameAncestors: frameAncestors(),
         imgSrc: ["'self'", 'data:', 'blob:'],
         objectSrc: ["'none'"],
         scriptSrc: ["'self'"],
@@ -69,30 +93,53 @@ function createApplication() {
       : false
   }));
   app.use(cors({ origin: false }));
-  app.use(express.json({ limit: '256kb' }));
+  app.use(express.json({
+    limit: '1mb',
+    verify(req, _res, buffer) {
+      req.rawBody = Buffer.from(buffer);
+    }
+  }));
   app.use(cookieParser());
 
   app.use((req, res, next) => {
     const required = process.env.NODE_ENV === 'production' && String(process.env.REQUIRE_HTTPS ?? 'true').toLowerCase() === 'true';
     if (!required || req.secure || req.get('x-forwarded-proto') === 'https' || req.path === '/api/health') return next();
-    res.status(426).json({ ok: false, error: 'HTTPS is required.' });
+    return res.status(426).json({ ok: false, error: 'HTTPS is required.' });
   });
 
   app.use((req, res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    if (req.path === '/api/webhooks/lago') return next();
+    if (/^Bearer\s+/i.test(String(req.get('authorization') || ''))) return next();
     const expected = process.env.PUBLIC_ORIGIN || `${req.protocol}://${req.get('host')}`;
     if (req.get('origin') !== expected) return res.status(403).json({ ok: false, error: 'Request origin rejected.' });
-    next();
+    return next();
   });
 
   app.get('/api/health', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, service: 'singh-cloud-emulator' });
+    res.json({ ok: true, service: 'singh-cloud-emulator', version: process.env.npm_package_version || '0.5.0' });
+  });
+
+  app.get('/api/ready', async (_req, res) => {
+    try {
+      const body = await systemReport();
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(body.ready ? 200 : 503).json({ ok: body.ready, checkedAt: body.checkedAt });
+    } catch {
+      res.status(503).json({ ok: false });
+    }
+  });
+
+  app.get('/metrics', (req, res, next) => {
+    if (!metricsAuthorized(req)) return res.status(404).end();
+    return metrics.endpoint(req, res, next);
   });
 
   app.get('/login', (_req, res) => res.sendFile(path.join(publicDir, 'login.html')));
   app.get('/login.js', (_req, res) => res.sendFile(path.join(publicDir, 'login.js')));
   app.get('/styles.css', (_req, res) => res.sendFile(path.join(publicDir, 'styles.css')));
+  registerPublicBillingWebhook(app);
 
   app.post('/api/auth/login', loginLimiter, async (req, res, next) => {
     try {
@@ -105,9 +152,9 @@ function createApplication() {
       auth.issueSession(res, user);
       req.user = user;
       await auditRequest(req, 'auth.login');
-      res.json({ ok: true, user: auth.publicUser(user) });
+      return res.json({ ok: true, user: auth.publicUser(user) });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   });
 
