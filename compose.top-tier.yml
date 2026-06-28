@@ -1,0 +1,238 @@
+services:
+  gateway:
+    image: ${NGINX_IMAGE:-nginx:1.27-alpine}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m,noexec,nosuid,nodev
+      - /var/run:size=4m,noexec,nosuid,nodev
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    networks: [edge, backend, observability]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - deploy/top-tier.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-singh_cloud}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-singh_cloud}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+      CLAMAV_HOST: clamav
+    expose: ["8080"]
+    volumes:
+      - uploads:/app/uploads
+      - audit_logs:/app/data/audit
+      - profiles:/app/data/profiles
+      - workspaces:/app/data/workspaces
+      - ./deploy/secrets/users.json:/run/secrets/users.json:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,noexec,nosuid,nodev
+      - /app/data/artifacts:size=1g,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [backend, worker_net, egress]
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-singh_cloud}
+      POSTGRES_USER: ${POSTGRES_USER:-singh_cloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    networks: [backend]
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes", --requirepass, "${REDIS_PASSWORD:?Set REDIS_PASSWORD}"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [CMD-SHELL, "redis-cli -a '$$REDIS_PASSWORD' ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    networks: [backend]
+
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+    volumes:
+      - object_data:/data
+    ports:
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: [CMD, mc, ready, local]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    networks: [backend]
+
+  clamav:
+    image: ${CLAMAV_IMAGE:-clamav/clamav:stable}
+    restart: unless-stopped
+    expose: ["3310"]
+    volumes:
+      - clamav_db:/var/lib/clamav
+    read_only: true
+    tmpfs:
+      - /run/clamav:size=64m,nosuid,nodev
+      - /tmp:size=256m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [backend, egress]
+
+  gradle-worker:
+    build:
+      context: .
+      dockerfile: deploy/workers/gradle/Dockerfile
+      args:
+        GRADLE_VERSION: ${GRADLE_VERSION:-8.10.2}
+        ANDROID_COMMANDLINE_TOOLS_URL: ${ANDROID_COMMANDLINE_TOOLS_URL:-}
+    restart: unless-stopped
+    environment:
+      SCE_API_BASE: ${WORKER_API_BASE:?Set WORKER_API_BASE}
+      SCE_API_KEY: ${BUILD_WORKER_API_KEY:?Set BUILD_WORKER_API_KEY}
+      SCE_WORKER_ID: ${BUILD_WORKER_ID:-gradle-worker-01}
+      BUILD_WORK_ROOT: /work/builds
+      GRADLE_USER_HOME: /cache/gradle
+    volumes:
+      - gradle_cache:/cache/gradle
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,nosuid,nodev
+      - /work:size=8g,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 1024
+    mem_limit: 8g
+    cpus: 4.0
+    networks: [worker_net, egress]
+
+  traffic-worker:
+    build:
+      context: .
+      dockerfile: deploy/workers/traffic/Dockerfile
+    restart: unless-stopped
+    environment:
+      SCE_API_BASE: ${WORKER_API_BASE:?Set WORKER_API_BASE}
+      SCE_API_KEY: ${CAPTURE_WORKER_API_KEY:?Set CAPTURE_WORKER_API_KEY}
+      SCE_WORKER_ID: ${CAPTURE_WORKER_ID:-traffic-worker-01}
+      ADB_SERVER_SOCKET: ${ADB_SERVER_SOCKET:-tcp:android-worker:5037}
+      CAPTURE_PROXY_PUBLIC_HOST: ${CAPTURE_PROXY_PUBLIC_HOST:-traffic-worker}
+      CAPTURE_WORK_ROOT: /captures
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,nosuid,nodev
+      - /captures:size=4g,nosuid,nodev
+      - /home/worker/.mitmproxy:size=128m,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
+    networks: [worker_net, egress]
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:latest}
+    restart: unless-stopped
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=30d]
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/secrets/metrics-token:/run/secrets/metrics_token:ro
+      - prometheus_data:/prometheus
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [observability]
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:latest}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on: [prometheus]
+    networks: [observability]
+
+networks:
+  edge:
+  egress:
+  backend:
+    internal: true
+  observability:
+    internal: true
+  worker_net:
+    name: singh-worker-net
+    internal: true
+
+volumes:
+  uploads:
+  audit_logs:
+  profiles:
+  workspaces:
+  postgres_data:
+  redis_data:
+  object_data:
+  clamav_db:
+  gradle_cache:
+  prometheus_data:
+  grafana_data:
