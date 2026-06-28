@@ -4,7 +4,7 @@ const notifications = require('./notification-service');
 const debugSessions = require('./debug-service');
 const billingMeter = require('./billing-meter-service');
 const { recordBuild, recordSession } = require('./session-meter');
-const { recordCapture } = require('./resource-meter');
+const { recordArtifact, recordCapture } = require('./resource-meter');
 
 let timer = null;
 let running = false;
@@ -123,6 +123,8 @@ async function sweep() {
           }
         }
       }
+
+      for (const artifact of state.artifacts) recordArtifact(state, artifact);
     });
 
     await Promise.all(requeueSessions.map((session) => queues.enqueue('session', session.id, { profileId: session.profileId, platform: session.platform || null })));
