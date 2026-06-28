@@ -37,15 +37,20 @@ function taskFor(build) {
   return build.format === 'aab' ? `bundle${capitalized}` : `assemble${capitalized}`;
 }
 
-async function runGradle(directory, build) {
+async function gradleCommand(directory) {
   const isWindows = process.platform === 'win32';
   const wrapper = path.join(directory, isWindows ? 'gradlew.bat' : 'gradlew');
   try {
     await fsp.access(wrapper);
+    if (!isWindows) await fsp.chmod(wrapper, 0o700);
+    return wrapper;
   } catch {
-    throw new Error('Workspace does not include a Gradle wrapper.');
+    return process.env.GRADLE_PATH || (isWindows ? 'gradle.bat' : 'gradle');
   }
-  if (!isWindows) await fsp.chmod(wrapper, 0o700);
+}
+
+async function runGradle(directory, build) {
+  const command = await gradleCommand(directory);
   const task = taskFor(build);
   const args = [task, '--no-daemon', '--stacktrace', '--console=plain', '--warning-mode=all'];
   const logs = [];
@@ -74,7 +79,7 @@ async function runGradle(directory, build) {
   }
 
   await new Promise((resolve, reject) => {
-    child = spawn(wrapper, args, {
+    child = spawn(command, args, {
       cwd: directory,
       env: {
         ...process.env,
