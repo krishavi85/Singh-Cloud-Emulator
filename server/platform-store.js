@@ -44,8 +44,10 @@ function emptyState() {
     invoices: [],
     notifications: [],
     workers: [],
+    debugSessions: [],
     appiumSessions: [],
     networkCaptures: [],
+    billingWebhookKeys: [],
     plans: defaultPlans()
   };
 }
@@ -55,7 +57,7 @@ function normalizeState(state) {
   const arrayKeys = [
     'profiles', 'sessions', 'shares', 'recordings', 'workspaces', 'builds', 'artifacts', 'apps',
     'usage', 'organizations', 'memberships', 'apiKeys', 'subscriptions', 'invoices', 'notifications',
-    'workers', 'appiumSessions', 'networkCaptures', 'plans'
+    'workers', 'debugSessions', 'appiumSessions', 'networkCaptures', 'billingWebhookKeys', 'plans'
   ];
   for (const key of arrayKeys) if (!Array.isArray(normalized[key])) normalized[key] = [];
 
