@@ -3,7 +3,7 @@ name: Security and platform checks
 on:
   pull_request:
   push:
-    branches: [main, security/public-production-hardening, platform-expansion, equivalence-stack]
+    branches: [main, top-tier-production-completion]
 
 permissions:
   contents: read
@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,16 +19,25 @@ jobs:
           node-version: "20"
       - run: npm install --ignore-scripts --no-fund
       - run: npm run check
+      - run: npm test
       - run: npm audit --omit=dev --audit-level=high
-      - name: Validate equivalence Compose stack
+      - run: cp deploy/top-tier.env.example deploy/top-tier.env
+      - name: Validate Compose stacks
         env:
-          CODE_SERVER_PASSWORD: ci-code-server-password
+          CODE_SERVER_PASSWORD: ci-value
           TURN_REALM: emulator.example.com
-          TURN_USERNAME: ci-turn
-          TURN_PASSWORD: ci-turn-password
+          TURN_USERNAME: ci-value
+          TURN_PASSWORD: ci-value
           TURN_EXTERNAL_IP: 203.0.113.10
-          POSTGRES_PASSWORD: ci-postgres-password
-          REDIS_PASSWORD: ci-redis-password
-          MINIO_ROOT_USER: ci-minio
-          MINIO_ROOT_PASSWORD: ci-minio-password
-        run: docker compose -f compose.equivalence.yml config >/dev/null
+          POSTGRES_PASSWORD: ci-value
+          REDIS_PASSWORD: ci-value
+          MINIO_ROOT_USER: ci-value
+          MINIO_ROOT_PASSWORD: ci-value
+          GRAFANA_ADMIN_PASSWORD: ci-value
+          WORKER_API_BASE: https://emulator.example.com
+          BUILD_WORKER_API_KEY: ci-value
+          CAPTURE_WORKER_API_KEY: ci-value
+        run: |
+          docker compose -f compose.equivalence.yml config >/dev/null
+          docker compose -f compose.workers.yml config >/dev/null
+          docker compose -f compose.top-tier.yml config >/dev/null
