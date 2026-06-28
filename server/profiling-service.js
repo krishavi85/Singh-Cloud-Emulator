@@ -58,6 +58,25 @@ async function collectPerfetto(userId, serial, durationSeconds = 10) {
   return { id, type: 'perfetto', filename: path.basename(local), sizeBytes: stat.size, createdAt: new Date().toISOString() };
 }
 
+async function collectSimpleperf(userId, serial, packageValue, durationSeconds = 10) {
+  const packageName = safePackage(packageValue);
+  const duration = Math.min(120, Math.max(1, Math.round(Number(durationSeconds || 10))));
+  const { stdout } = await adb(serial, ['shell', 'pidof', packageName], { timeout: 15_000 });
+  const pid = String(stdout || '').trim().split(/\s+/)[0];
+  if (!/^\d+$/.test(pid)) throw Object.assign(new Error('The app process is not running.'), { status: 409 });
+
+  const id = `simpleperf-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const remote = `/data/local/tmp/${id}.data`;
+  const directory = await userDir(userId);
+  const local = path.join(directory, `${id}.data`);
+
+  await adb(serial, ['shell', 'simpleperf', 'record', '-p', pid, '--duration', String(duration), '-o', remote], { timeout: (duration + 30) * 1000 });
+  await adb(serial, ['pull', remote, local], { timeout: 120_000 });
+  await adb(serial, ['shell', 'rm', '-f', remote]).catch(() => {});
+  const stat = await fs.stat(local);
+  return { id, type: 'simpleperf', packageName, filename: path.basename(local), sizeBytes: stat.size, createdAt: new Date().toISOString() };
+}
+
 async function collectHeapDump(userId, serial, packageValue) {
   const packageName = safePackage(packageValue);
   const id = `heap-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
@@ -92,11 +111,11 @@ async function readArtifact(userId, filename) {
 function startArtifactRetention() {
   const hours = Math.max(1, Number(process.env.PROFILE_RETENTION_HOURS || 24));
   const sweep = () => removeExpiredFiles(root, hours * 60 * 60 * 1000).catch((error) => console.error('Profile retention failed:', error));
-  const timer = setInterval(sweep, Math.min(hours, 1) * 60 * 60 * 1000);
+  const timer = setInterval(sweep, 60 * 60 * 1000);
   timer.unref();
   sweep();
 }
 
 startArtifactRetention();
 
-module.exports = { collectHeapDump, collectPerfetto, dumpUiHierarchy, readArtifact };
+module.exports = { collectHeapDump, collectPerfetto, collectSimpleperf, dumpUiHierarchy, readArtifact };
