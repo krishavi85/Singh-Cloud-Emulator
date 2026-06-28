@@ -5,6 +5,8 @@ const store = require('./platform-store');
 const storage = require('./object-storage');
 const queues = require('./queue-service');
 const apiKeys = require('./api-key-service');
+const { recordBuild } = require('./session-meter');
+const { recordArtifact } = require('./resource-meter');
 const { auditRequest } = require('./audit');
 const metrics = require('./metrics');
 
@@ -58,6 +60,8 @@ async function finalize(buildId, input) {
     build.artifactId = artifact.id;
     build.completedAt = store.now();
     build.log = String(input.log || build.log || '').slice(-1_000_000);
+    recordBuild(state, build);
+    recordArtifact(state, artifact);
     return { build: { ...build }, artifact: { ...artifact } };
   });
 }
@@ -116,20 +120,6 @@ function registerArtifactRoutes(app) {
     await completeLease(result);
     await auditRequest(req, 'artifact.presigned.complete', 'success', { buildId: build.id, artifactId: result.artifact.id });
     res.status(201).json(result);
-  }));
-
-  app.get('/api/platform/artifacts/:id/download', asyncRoute(async (req, res) => {
-    const state = await store.readState();
-    const artifact = state.artifacts.find((item) => item.id === req.params.id && store.owned(item, req.user));
-    if (!artifact) throw error(404, 'Artifact not found.');
-    const download = await storage.presignDownload(artifact.storageKey, artifact.name, req.query.expiresSeconds);
-    await auditRequest(req, 'artifact.download', 'success', { artifactId: artifact.id });
-    if (!download.local) return res.redirect(302, download.url);
-    const data = await storage.readLocal(artifact.storageKey);
-    res.setHeader('Content-Type', artifact.contentType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${path.basename(artifact.name)}"`);
-    res.setHeader('Cache-Control', 'private, no-store');
-    return res.send(data);
   }));
 
   app.delete('/api/platform/artifacts/:id', asyncRoute(async (req, res) => {
