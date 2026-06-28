@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive NODE_ENV=production
 
@@ -6,7 +6,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 python3-venv adb ca-certificates tini \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/mitmproxy \
-    && /opt/mitmproxy/bin/pip install --no-cache-dir --upgrade pip mitmproxy
+    && /opt/mitmproxy/bin/pip install --no-cache-dir --upgrade pip mitmproxy \
+    && node --version \
+    && adb version >/dev/null \
+    && /opt/mitmproxy/bin/mitmdump --version >/dev/null
 
 ENV PATH=/opt/mitmproxy/bin:${PATH}
 WORKDIR /app
