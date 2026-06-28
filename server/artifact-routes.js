@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('node:path');
 const store = require('./platform-store');
 const storage = require('./object-storage');
+const queues = require('./queue-service');
 const apiKeys = require('./api-key-service');
 const { auditRequest } = require('./audit');
 const metrics = require('./metrics');
@@ -20,8 +21,8 @@ function buildForWorker(state, user, id) {
   const build = state.builds.find((item) => item.id === id);
   if (!build) throw error(404, 'Build not found.');
   if (build.status !== 'building' && build.status !== 'queued') throw error(409, 'Build is not accepting artifacts.');
-  if (build.workerId && user.serviceAccount && build.workerId !== user.apiKeyId && build.workerId !== user.id) {
-    throw error(403, 'Build is leased by another worker.');
+  if (user.serviceAccount && build.workerApiKeyId && build.workerApiKeyId !== user.apiKeyId) {
+    throw error(403, 'Build is leased by another service account.');
   }
   return build;
 }
@@ -53,11 +54,17 @@ async function finalize(buildId, input) {
     };
     if (!existing) state.artifacts.push(artifact);
     build.status = 'completed';
+    build.progress = 100;
     build.artifactId = artifact.id;
     build.completedAt = store.now();
     build.log = String(input.log || build.log || '').slice(-1_000_000);
-    return { build, artifact };
+    return { build: { ...build }, artifact: { ...artifact } };
   });
+}
+
+async function completeLease(result) {
+  await queues.ack('build', result.build.id, result.build.workerId || null);
+  metrics.recordBuild('completed', result.build.format);
 }
 
 function registerArtifactRoutes(app) {
@@ -80,8 +87,13 @@ function registerArtifactRoutes(app) {
       const name = path.basename(String(req.query.name || `app-${build.variant}.${build.format}`));
       const key = artifactKey(build, name);
       const saved = await storage.putBuffer(key, req.body, req.get('content-type') || 'application/octet-stream', { buildid: build.id });
-      const result = await finalize(build.id, { ...saved, storageKey: saved.key, name, log: req.get('x-build-log') || '' });
-      metrics.recordBuild('completed', build.format);
+      const suppliedDigest = String(req.get('x-artifact-sha256') || '').toLowerCase();
+      if (suppliedDigest && suppliedDigest !== saved.sha256) {
+        await storage.remove(saved.key);
+        throw error(400, 'Artifact SHA-256 does not match the uploaded content.');
+      }
+      const result = await finalize(build.id, { ...saved, storageKey: saved.key, name });
+      await completeLease(result);
       await auditRequest(req, 'artifact.upload.complete', 'success', { buildId: build.id, artifactId: result.artifact.id, sizeBytes: result.artifact.sizeBytes });
       res.status(201).json(result);
     })
@@ -101,7 +113,7 @@ function registerArtifactRoutes(app) {
       contentType: object.contentType,
       log: req.body.log
     });
-    metrics.recordBuild('completed', build.format);
+    await completeLease(result);
     await auditRequest(req, 'artifact.presigned.complete', 'success', { buildId: build.id, artifactId: result.artifact.id });
     res.status(201).json(result);
   }));
