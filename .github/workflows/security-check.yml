@@ -17,6 +17,20 @@ jobs:
     name: Application, security and Compose
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      CODE_SERVER_PASSWORD: ci-value
+      TURN_REALM: emulator.example.com
+      TURN_USERNAME: ci-value
+      TURN_PASSWORD: ci-value
+      TURN_EXTERNAL_IP: 203.0.113.10
+      POSTGRES_PASSWORD: ci-value
+      REDIS_PASSWORD: ci-value
+      MINIO_ROOT_USER: ci-value
+      MINIO_ROOT_PASSWORD: ci-value
+      GRAFANA_ADMIN_PASSWORD: ci-value
+      WORKER_API_BASE: https://emulator.example.com
+      BUILD_WORKER_API_KEY: sce_live_ci_build_worker_key_1234567890
+      CAPTURE_WORKER_API_KEY: sce_live_ci_capture_worker_key_1234567890
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,29 +42,19 @@ jobs:
         run: npm run validate
       - name: Prepare production template
         run: cp deploy/top-tier.env.example deploy/top-tier.env
-      - name: Validate deployment manifests
-        env:
-          CODE_SERVER_PASSWORD: ci-value
-          TURN_REALM: emulator.example.com
-          TURN_USERNAME: ci-value
-          TURN_PASSWORD: ci-value
-          TURN_EXTERNAL_IP: 203.0.113.10
-          POSTGRES_PASSWORD: ci-value
-          REDIS_PASSWORD: ci-value
-          MINIO_ROOT_USER: ci-value
-          MINIO_ROOT_PASSWORD: ci-value
-          GRAFANA_ADMIN_PASSWORD: ci-value
-          WORKER_API_BASE: https://emulator.example.com
-          BUILD_WORKER_API_KEY: sce_live_ci_build_worker_key_1234567890
-          CAPTURE_WORKER_API_KEY: sce_live_ci_capture_worker_key_1234567890
-        run: |
-          docker compose -f compose.production.yml config >/dev/null
-          docker compose -f compose.equivalence.yml config >/dev/null
-          docker compose -f compose.workers.yml config >/dev/null
-          docker compose -f compose.top-tier.yml config >/dev/null
+      - name: Validate production Compose
+        run: docker compose -f compose.production.yml config >/dev/null
+      - name: Validate equivalence Compose
+        run: docker compose -f compose.equivalence.yml config >/dev/null
+      - name: Validate worker Compose
+        run: docker compose -f compose.workers.yml config >/dev/null
+      - name: Validate top-tier Compose
+        run: docker compose -f compose.top-tier.yml config >/dev/null
       - name: Create machine-readable dependency audit
+        if: always()
         run: npm audit --omit=dev --json > npm-audit.json || true
       - name: Enforce high-severity dependency policy
+        if: always()
         run: node scripts/validate-audit.js npm-audit.json
 
   api-image:
@@ -60,7 +64,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build API image
-        run: docker build --pull --progress=plain --tag singh-cloud-emulator:ci .
+        run: |
+          if ! docker build --pull --progress=plain --tag singh-cloud-emulator:ci . >docker-build.log 2>&1; then
+            tail -n 160 docker-build.log
+            exit 1
+          fi
+          tail -n 20 docker-build.log
 
   runtime-images:
     name: Build ${{ matrix.name }} image
@@ -81,4 +90,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and verify image
-        run: docker build --pull --progress=plain --file "${{ matrix.dockerfile }}" --tag "sce-${{ strategy.job-index }}:ci" .
+        run: |
+          if ! docker build --pull --progress=plain --file "${{ matrix.dockerfile }}" --tag "sce-${{ strategy.job-index }}:ci" . >docker-build.log 2>&1; then
+            tail -n 200 docker-build.log
+            exit 1
+          fi
+          tail -n 20 docker-build.log
