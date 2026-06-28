@@ -11,12 +11,14 @@ async function sweep() {
   running = true;
   const requeueSessions = [];
   const requeueBuilds = [];
+  const requeueCaptures = [];
   const expiredSessions = [];
   try {
     await store.transact((state) => {
       const now = Date.now();
       const staleWorkerMs = Math.max(30_000, Number(process.env.WORKER_STALE_MS || 90_000));
       const staleBuildMs = Math.max(120_000, Number(process.env.BUILD_STALE_MS || 30 * 60_000));
+      const staleCaptureMs = Math.max(60_000, Number(process.env.CAPTURE_STALE_MS || 120_000));
       const queueRefreshMs = Math.max(5_000, Number(process.env.QUEUE_REFRESH_MS || 15_000));
 
       for (const worker of state.workers) {
@@ -24,6 +26,7 @@ async function sweep() {
         if (worker.status !== 'offline' && heartbeat && now - heartbeat > staleWorkerMs) {
           worker.status = 'offline';
           worker.offlineAt = store.now();
+          worker.activeLeases = 0;
         }
       }
 
@@ -79,10 +82,37 @@ async function sweep() {
           requeueBuilds.push({ ...build });
         }
       }
+
+      for (const capture of state.networkCaptures) {
+        if (capture.status === 'queued') {
+          if (!capture.lastQueuedAt || now - Date.parse(capture.lastQueuedAt) > queueRefreshMs) {
+            capture.lastQueuedAt = store.now();
+            requeueCaptures.push({ ...capture });
+          }
+          continue;
+        }
+        if (!['starting', 'running', 'stopping'].includes(capture.status)) continue;
+        const heartbeat = Date.parse(capture.lastHeartbeatAt || capture.claimedAt || capture.startedAt || 0);
+        if (heartbeat && now - heartbeat > staleCaptureMs) {
+          capture.status = capture.stopRequested ? 'failed' : 'queued';
+          capture.error = 'capture-worker-heartbeat-lost';
+          capture.workerId = null;
+          capture.workerApiKeyId = null;
+          capture.claimedAt = null;
+          capture.startedAt = null;
+          capture.lastHeartbeatAt = null;
+          capture.recoveryCount = Number(capture.recoveryCount || 0) + 1;
+          if (!capture.stopRequested) {
+            capture.lastQueuedAt = store.now();
+            requeueCaptures.push({ ...capture });
+          }
+        }
+      }
     });
 
     await Promise.all(requeueSessions.map((session) => queues.enqueue('session', session.id, { profileId: session.profileId, platform: session.platform || null })));
     await Promise.all(requeueBuilds.map((build) => queues.enqueue('build', build.id, { workspaceId: build.workspaceId, format: build.format })));
+    await Promise.all(requeueCaptures.map((capture) => queues.enqueue('capture', capture.id, { serial: capture.serial, sessionId: capture.sessionId })));
     await debugSessions.cleanupExpired();
 
     for (const session of expiredSessions) {
