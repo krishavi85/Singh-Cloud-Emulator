@@ -78,9 +78,11 @@ services:
       start_period: 2m
     networks:
       - backend
+      - updates
 
 networks:
   edge:
+  updates:
   backend:
     internal: true
   worker_net:
