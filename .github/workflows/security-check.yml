@@ -3,9 +3,7 @@ name: Security checks
 on:
   pull_request:
   push:
-    branches:
-      - main
-      - security/public-production-hardening
+    branches: [main, security/public-production-hardening]
 
 permissions:
   contents: read
@@ -15,20 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm install --ignore-scripts --no-fund
-
-      - name: Run syntax checks
-        run: npm run check
-
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      - run: npm install --ignore-scripts --no-fund
+      - run: npm run check
+      - run: npm audit --omit=dev --audit-level=high
