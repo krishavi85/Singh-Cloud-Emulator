@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operations · Singh Cloud Emulator</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/workbench.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">PLATFORM OPERATIONS</p><h1>Singh Cloud Operations</h1></div>
+    <div class="status-cluster"><a href="/">Emulator</a><a href="/workbench.html">Workbench</a><a href="/equivalence.html">Integrations</a><span id="currentUser"></span><button id="logoutButton" class="text-button">Sign out</button></div>
+  </header>
+  <main class="workbench-content" style="padding:18px">
+    <section class="panel section-card"><div class="view-heading"><div><p class="eyebrow">READINESS</p><h2>System health</h2></div><button id="refreshOperations">Refresh</button></div><div id="healthGrid" class="metric-grid"></div></section>
+    <section class="panel section-card"><h2>Worker fleet</h2><div id="workerList" class="card-list"></div></section>
+    <section class="panel section-card"><h2>Organizations</h2><div class="inline-form"><input id="organizationName" placeholder="Organization name"><input id="organizationBillingEmail" type="email" placeholder="Billing email"><button id="createOrganization">Create</button></div><div id="organizationList" class="card-list"></div></section>
+    <section class="panel section-card"><h2>Service API keys</h2><div class="inline-form"><input id="apiKeyName" placeholder="Worker key"><input id="apiKeyScopes" value="workers:read,workers:write" placeholder="Comma-separated scopes"><button id="createApiKey">Generate key</button></div><pre id="newApiKey" class="diagnostic-output">Generated keys are displayed once.</pre><div id="apiKeyList" class="card-list"></div></section>
+    <section class="panel section-card"><h2>Billing and notifications</h2><div class="inline-form"><input id="billingOrganization" placeholder="Organization ID"><select id="billingPlan"><option value="free">Free</option><option value="pro">Pro</option><option value="team">Team</option></select><button id="assignPlan">Assign plan</button><input id="testEmail" type="email" placeholder="Test email"><button id="sendTestEmail">Send test</button></div><div id="billingOutput" class="diagnostic-output">Billing service status will appear here.</div></section>
+  </main>
+  <div id="toast" class="toast" hidden></div>
+  <script src="/session.js" defer></script>
+  <script src="/operations.js" defer></script>
+</body>
+</html>
