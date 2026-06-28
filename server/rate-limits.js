@@ -5,26 +5,24 @@ function numberFromEnv(name, fallback, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, Number.isFinite(value) ? value : fallback));
 }
 
-function key(req) {
-  return req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`;
-}
-
-function buildLimiter({ windowMs, limit, message, skipSuccessfulRequests = false }) {
-  return rateLimit({
+function buildLimiter({ windowMs, limit, message, skipSuccessfulRequests = false, perUser = false }) {
+  const options = {
     windowMs,
     limit,
-    keyGenerator: key,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     skipSuccessfulRequests,
     handler: (_req, res) => res.status(429).json({ ok: false, error: message })
-  });
+  };
+  if (perUser) options.keyGenerator = (req) => `user:${req.user.id}`;
+  return rateLimit(options);
 }
 
 const apiLimiter = buildLimiter({
   windowMs: 15 * 60 * 1000,
   limit: numberFromEnv('API_RATE_LIMIT', 600, 30, 10_000),
-  message: 'Too many API requests. Try again later.'
+  message: 'Too many API requests. Try again later.',
+  perUser: true
 });
 
 const loginLimiter = buildLimiter({
@@ -37,13 +35,15 @@ const loginLimiter = buildLimiter({
 const uploadLimiter = buildLimiter({
   windowMs: 60 * 60 * 1000,
   limit: numberFromEnv('UPLOAD_RATE_LIMIT', 10, 1, 500),
-  message: 'APK upload limit reached. Try again later.'
+  message: 'APK upload limit reached. Try again later.',
+  perUser: true
 });
 
 const controlLimiter = buildLimiter({
   windowMs: 60 * 1000,
   limit: numberFromEnv('CONTROL_RATE_LIMIT', 300, 30, 3000),
-  message: 'Device control rate limit reached.'
+  message: 'Device control rate limit reached.',
+  perUser: true
 });
 
 module.exports = { apiLimiter, controlLimiter, loginLimiter, uploadLimiter };
