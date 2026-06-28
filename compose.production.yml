@@ -70,12 +70,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    healthcheck:
-      test: ["CMD", "clamdscan", "--ping", "3"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 2m
     networks:
       - backend
       - updates
