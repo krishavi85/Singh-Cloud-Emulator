@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   application:
-    name: Application, security and Compose
+    name: Application and Compose
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -52,12 +52,19 @@ jobs:
         run: docker compose -f compose.workers.yml config >/dev/null
       - name: Validate top-tier Compose
         run: docker compose -f compose.top-tier.yml config >/dev/null
-      - name: Create machine-readable dependency audit
-        if: always()
-        run: npm audit --omit=dev --json > npm-audit.json || true
-      - name: Enforce high-severity dependency policy
-        if: always()
-        run: node scripts/validate-audit.js npm-audit.json
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install --ignore-scripts --no-fund
+      - run: npm audit --omit=dev --json > npm-audit.json || true
+      - run: node scripts/validate-audit.js npm-audit.json
 
   api-image:
     name: Build production API image
