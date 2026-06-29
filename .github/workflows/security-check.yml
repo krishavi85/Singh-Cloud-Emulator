@@ -48,6 +48,10 @@ jobs:
         run: docker compose -f compose.production.yml config >/dev/null
       - name: Validate equivalence Compose
         run: docker compose -f compose.equivalence.yml config >/dev/null
+      - name: Verify pinned browser IDE image
+        run: |
+          docker pull ghcr.io/coder/code-server:4.107.1-ubuntu
+          docker run --rm --entrypoint code-server ghcr.io/coder/code-server:4.107.1-ubuntu --version
       - name: Validate worker Compose
         run: docker compose -f compose.workers.yml config >/dev/null
       - name: Validate top-tier Compose
@@ -92,8 +96,6 @@ jobs:
             dockerfile: deploy/workers/gradle/Dockerfile
           - name: Traffic capture worker
             dockerfile: deploy/workers/traffic/Dockerfile
-          - name: Browser Android IDE
-            dockerfile: deploy/equivalence/ide/Dockerfile
           - name: Appium UiAutomator2
             dockerfile: deploy/equivalence/appium/Dockerfile
     steps:
