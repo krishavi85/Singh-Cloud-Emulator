@@ -1,13 +1,13 @@
 services:
   ide:
-    build:
-      context: .
-      dockerfile: deploy/equivalence/ide/Dockerfile
+    image: ghcr.io/coder/code-server:4.107.1-ubuntu
     restart: unless-stopped
+    command: ["/bin/sh", "/usr/local/bin/start-ide.sh"]
     environment:
       PASSWORD: ${CODE_SERVER_PASSWORD:?Set CODE_SERVER_PASSWORD}
       CODE_SERVER_EXTENSIONS: ${CODE_SERVER_EXTENSIONS:-redhat.java,vscjava.vscode-java-debug,vscjava.vscode-gradle}
     volumes:
+      - ./deploy/equivalence/ide/start-ide.sh:/usr/local/bin/start-ide.sh:ro
       - workspaces:/workspace
       - gradle_cache:/home/coder/.gradle
     ports:
