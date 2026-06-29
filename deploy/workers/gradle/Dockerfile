@@ -13,19 +13,23 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openjdk-17-jdk-headless curl unzip ca-certificates git tini \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip \
+    && curl --retry 5 --retry-all-errors --connect-timeout 20 -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip \
     && unzip -q /tmp/gradle.zip -d /opt \
     && mv "/opt/gradle-${GRADLE_VERSION}" /opt/gradle \
     && rm /tmp/gradle.zip \
     && mkdir -p /opt/android-sdk/cmdline-tools /cache/gradle /work \
     && TOOLS_URL="${ANDROID_COMMANDLINE_TOOLS_URL:-https://dl.google.com/android/repository/commandlinetools-linux-14742923_latest.zip}" \
-    && curl -fsSL "$TOOLS_URL" -o /tmp/android-tools.zip \
+    && curl --retry 5 --retry-all-errors --connect-timeout 20 -fsSL "$TOOLS_URL" -o /tmp/android-tools.zip \
     && unzip -q /tmp/android-tools.zip -d /tmp/android-tools \
     && mkdir -p /opt/android-sdk/cmdline-tools/latest \
     && cp -a /tmp/android-tools/cmdline-tools/. /opt/android-sdk/cmdline-tools/latest/ \
     && rm -rf /tmp/android-tools /tmp/android-tools.zip \
     && yes | sdkmanager --licenses >/dev/null \
-    && sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" \
+    && for attempt in 1 2 3; do \
+         sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" && break; \
+         if [ "$attempt" = 3 ]; then exit 1; fi; \
+         sleep 5; \
+       done \
     && node --version \
     && gradle --version >/dev/null \
     && sdkmanager --version >/dev/null \
