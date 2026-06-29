@@ -3,14 +3,10 @@ services:
     build:
       context: .
       dockerfile: deploy/equivalence/ide/Dockerfile
-      args:
-        ANDROID_COMMANDLINE_TOOLS_URL: ${ANDROID_COMMANDLINE_TOOLS_URL:-}
     restart: unless-stopped
     environment:
       PASSWORD: ${CODE_SERVER_PASSWORD:?Set CODE_SERVER_PASSWORD}
       CODE_SERVER_EXTENSIONS: ${CODE_SERVER_EXTENSIONS:-redhat.java,vscjava.vscode-java-debug,vscjava.vscode-gradle}
-      ANDROID_HOME: /opt/android-sdk
-      ANDROID_SDK_ROOT: /opt/android-sdk
     volumes:
       - workspaces:/workspace
       - gradle_cache:/home/coder/.gradle
