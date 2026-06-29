@@ -21,8 +21,15 @@ function operationsNotify(message) {
   operationsNotify.timer = setTimeout(() => { operationsToast.hidden = true; }, 3500);
 }
 
-function operationsMetric(name, value, healthy = true) {
-  return `<div class="metric"><span class="muted">${operationsEscape(name)}</span><strong>${operationsEscape(value)}</strong><span class="badge ${healthy ? 'good' : 'warn'}">${healthy ? 'Healthy' : 'Attention'}</span></div>`;
+function operationsMetric(name, value, state = 'healthy') {
+  const labels = { healthy: 'Healthy', attention: 'Attention', disabled: 'Disabled', informational: 'Information' };
+  const badgeClass = state === 'healthy' ? 'good' : state === 'attention' ? 'warn' : '';
+  return `<div class="metric"><span class="muted">${operationsEscape(name)}</span><strong>${operationsEscape(value)}</strong><span class="badge ${badgeClass}">${labels[state] || labels.informational}</span></div>`;
+}
+
+function dependencyState(dependency, optional = false) {
+  if (optional && dependency?.configured === false) return 'disabled';
+  return dependency?.healthy === false ? 'attention' : 'healthy';
 }
 
 function operationsCard(title, status, details, actions = '') {
@@ -34,18 +41,18 @@ async function loadOperationsHealth() {
     const body = await operationsRequest('/api/platform/system/health');
     const dependencies = body.dependencies || {};
     document.querySelector('#healthGrid').innerHTML = [
-      operationsMetric('Platform', body.ready ? 'Ready' : 'Degraded', body.ready),
-      operationsMetric('State', body.stateBackend, dependencies.database?.healthy !== false),
-      operationsMetric('Queue', dependencies.redis?.backend || 'unknown', dependencies.redis?.healthy !== false),
-      operationsMetric('Storage', dependencies.objectStorage?.backend || 'unknown', dependencies.objectStorage?.healthy !== false),
-      operationsMetric('Scanner', dependencies.clamav?.engine || 'unknown', dependencies.clamav?.healthy !== false),
-      operationsMetric('Email', dependencies.smtp?.backend || 'disabled', dependencies.smtp?.healthy !== false),
-      operationsMetric('Billing', dependencies.lago?.backend || 'disabled', dependencies.lago?.healthy !== false),
-      operationsMetric('Active sessions', body.counts?.activeSessions || 0),
-      operationsMetric('Queued builds', body.counts?.queuedBuilds || 0)
+      operationsMetric('Platform', body.ready ? 'Ready' : 'Degraded', body.ready ? 'healthy' : 'attention'),
+      operationsMetric('State', body.stateBackend, dependencyState(dependencies.database)),
+      operationsMetric('Queue', dependencies.redis?.backend || 'unknown', dependencyState(dependencies.redis)),
+      operationsMetric('Storage', dependencies.objectStorage?.backend || 'unknown', dependencyState(dependencies.objectStorage)),
+      operationsMetric('Scanner', dependencies.clamav?.engine || 'unknown', dependencyState(dependencies.clamav)),
+      operationsMetric('Email', dependencies.smtp?.backend || 'disabled', dependencyState(dependencies.smtp, true)),
+      operationsMetric('Billing', dependencies.lago?.backend || 'disabled', dependencyState(dependencies.lago, true)),
+      operationsMetric('Active sessions', body.counts?.activeSessions || 0, 'informational'),
+      operationsMetric('Queued builds', body.counts?.queuedBuilds || 0, 'informational')
     ].join('');
   } catch (error) {
-    document.querySelector('#healthGrid').innerHTML = operationsMetric('System health', error.message, false);
+    document.querySelector('#healthGrid').innerHTML = operationsMetric('System health', error.message, 'attention');
   }
 }
 
