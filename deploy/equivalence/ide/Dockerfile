@@ -1,4 +1,4 @@
-FROM ghcr.io/coder/code-server:latest
+FROM ghcr.io/coder/code-server:4.107.1-ubuntu
 
 USER root
 ARG ANDROID_COMMANDLINE_TOOLS_URL
