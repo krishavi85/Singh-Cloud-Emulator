@@ -1,34 +1,109 @@
-name: Security and platform checks
+name: Verify real application
 
 on:
   pull_request:
   push:
-    branches: [main, security/public-production-hardening, platform-expansion, equivalence-stack]
+    branches: [main, top-tier-production-completion]
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  application:
+    name: Application and Compose
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    env:
+      CODE_SERVER_PASSWORD: ci-value
+      TURN_REALM: emulator.example.com
+      TURN_USERNAME: ci-value
+      TURN_PASSWORD: ci-value
+      TURN_EXTERNAL_IP: 203.0.113.10
+      POSTGRES_PASSWORD: ci-value
+      REDIS_PASSWORD: ci-value
+      MINIO_ROOT_USER: ci-value
+      MINIO_ROOT_PASSWORD: ci-value
+      GRAFANA_ADMIN_PASSWORD: ci-value
+      WORKER_API_BASE: https://emulator.example.com
+      BUILD_WORKER_API_KEY: sce_live_ci_build_worker_key_1234567890
+      CAPTURE_WORKER_API_KEY: sce_live_ci_capture_worker_key_1234567890
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: npm install --ignore-scripts --no-fund
-      - run: npm run check
-      - run: npm audit --omit=dev --audit-level=high
-      - name: Validate equivalence Compose stack
-        env:
-          CODE_SERVER_PASSWORD: ci-code-server-password
-          TURN_REALM: emulator.example.com
-          TURN_USERNAME: ci-turn
-          TURN_PASSWORD: ci-turn-password
-          TURN_EXTERNAL_IP: 203.0.113.10
-          POSTGRES_PASSWORD: ci-postgres-password
-          REDIS_PASSWORD: ci-redis-password
-          MINIO_ROOT_USER: ci-minio
-          MINIO_ROOT_PASSWORD: ci-minio-password
+          node-version: "24"
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-fund
+      - name: Validate source, required files, tests and live startup
+        run: npm run validate
+      - name: Prepare production templates
+        run: |
+          cp .env.production.example .env.production
+          cp deploy/top-tier.env.example deploy/top-tier.env
+      - name: Validate production Compose
+        run: docker compose -f compose.production.yml config >/dev/null
+      - name: Validate equivalence Compose
         run: docker compose -f compose.equivalence.yml config >/dev/null
+      - name: Verify pinned browser IDE image
+        run: |
+          docker pull ghcr.io/coder/code-server:4.107.1-ubuntu
+          docker run --rm --entrypoint code-server ghcr.io/coder/code-server:4.107.1-ubuntu --version
+      - name: Validate worker Compose
+        run: docker compose -f compose.workers.yml config >/dev/null
+      - name: Validate top-tier Compose
+        run: docker compose -f compose.top-tier.yml config >/dev/null
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install --ignore-scripts --no-fund
+      - run: npm audit --omit=dev --json > npm-audit.json || true
+      - run: node scripts/validate-audit.js npm-audit.json
+
+  api-image:
+    name: Build production API image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: |
+          if ! docker build --pull --progress=plain --tag singh-cloud-emulator:ci . >docker-build.log 2>&1; then
+            tail -n 160 docker-build.log
+            exit 1
+          fi
+          tail -n 20 docker-build.log
+
+  runtime-images:
+    name: Build ${{ matrix.name }} image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Gradle Android worker
+            dockerfile: deploy/workers/gradle/Dockerfile
+          - name: Traffic capture worker
+            dockerfile: deploy/workers/traffic/Dockerfile
+          - name: Appium UiAutomator2
+            dockerfile: deploy/equivalence/appium/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify image
+        run: |
+          if ! docker build --pull --progress=plain --file "${{ matrix.dockerfile }}" --tag "sce-${{ strategy.job-index }}:ci" . >docker-build.log 2>&1; then
+            tail -n 200 docker-build.log
+            exit 1
+          fi
+          tail -n 20 docker-build.log

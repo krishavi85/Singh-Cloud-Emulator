@@ -1,0 +1,33 @@
+[Unit]
+Description=Singh Cloud Emulator Cuttlefish Worker
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/dev/kvm
+
+[Service]
+Type=simple
+User=cuttlefish
+Group=kvm
+WorkingDirectory=/opt/singh-cloud-emulator
+EnvironmentFile=/etc/singh-cloud-emulator/cuttlefish-worker.env
+ExecStart=/usr/bin/node /opt/singh-cloud-emulator/workers/cuttlefish-worker.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=180
+KillMode=mixed
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/singh-cuttlefish /home/cuttlefish
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+LimitNOFILE=65536
+TasksMax=4096
+MemoryMax=12G
+CPUQuota=600%
+
+[Install]
+WantedBy=multi-user.target

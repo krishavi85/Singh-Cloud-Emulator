@@ -1,0 +1,63 @@
+services:
+  gradle-worker:
+    build:
+      context: .
+      dockerfile: deploy/workers/gradle/Dockerfile
+      args:
+        GRADLE_VERSION: ${GRADLE_VERSION:-8.10.2}
+        ANDROID_COMMANDLINE_TOOLS_URL: ${ANDROID_COMMANDLINE_TOOLS_URL:-}
+    restart: unless-stopped
+    environment:
+      SCE_API_BASE: ${WORKER_API_BASE:?Set WORKER_API_BASE to the public HTTPS control-plane origin}
+      SCE_API_KEY: ${BUILD_WORKER_API_KEY:?Set BUILD_WORKER_API_KEY}
+      SCE_WORKER_ID: ${BUILD_WORKER_ID:-gradle-worker-01}
+      BUILD_TIMEOUT_MS: ${BUILD_TIMEOUT_MS:-1200000}
+      BUILD_LOG_LIMIT_BYTES: ${BUILD_LOG_LIMIT_BYTES:-5000000}
+      BUILD_WORK_ROOT: /work/builds
+      GRADLE_USER_HOME: /cache/gradle
+    volumes:
+      - gradle_cache:/cache/gradle
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,nosuid,nodev
+      - /work:size=8g,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 1024
+    mem_limit: 8g
+    cpus: 4.0
+    networks: [worker_net, egress]
+
+  traffic-worker:
+    build:
+      context: .
+      dockerfile: deploy/workers/traffic/Dockerfile
+    restart: unless-stopped
+    environment:
+      SCE_API_BASE: ${WORKER_API_BASE:?Set WORKER_API_BASE to the public HTTPS control-plane origin}
+      SCE_API_KEY: ${CAPTURE_WORKER_API_KEY:?Set CAPTURE_WORKER_API_KEY}
+      SCE_WORKER_ID: ${CAPTURE_WORKER_ID:-traffic-worker-01}
+      ADB_SERVER_SOCKET: ${ADB_SERVER_SOCKET:-tcp:android-worker:5037}
+      CAPTURE_PROXY_PUBLIC_HOST: ${CAPTURE_PROXY_PUBLIC_HOST:-traffic-worker}
+      CAPTURE_PROXY_PORT_START: ${CAPTURE_PROXY_PORT_START:-18080}
+      CAPTURE_WORK_ROOT: /captures
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,nosuid,nodev
+      - /captures:size=4g,nosuid,nodev
+      - /home/worker/.mitmproxy:size=128m,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
+    networks: [worker_net, egress]
+
+networks:
+  worker_net:
+    external: true
+    name: singh-worker-net
+  egress:
+
+volumes:
+  gradle_cache:

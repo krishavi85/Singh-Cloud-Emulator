@@ -12,6 +12,28 @@ async function sha256(filePath) {
   });
 }
 
+function clamConnection(command, timeoutMs = 5000) {
+  const host = process.env.CLAMAV_HOST || '127.0.0.1';
+  const port = Number(process.env.CLAMAV_PORT || 3310);
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host, port });
+    const chunks = [];
+    let settled = false;
+    function finish(error, value) {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      if (error) reject(error);
+      else resolve(value);
+    }
+    socket.setTimeout(timeoutMs, () => finish(new Error('ClamAV request timed out.')));
+    socket.on('error', (error) => finish(error));
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.on('end', () => finish(null, Buffer.concat(chunks).toString('utf8').replace(/\0/g, '').trim()));
+    socket.on('connect', () => socket.end(command));
+  });
+}
+
 async function scanWithClamAv(filePath) {
   const host = process.env.CLAMAV_HOST || '127.0.0.1';
   const port = Number(process.env.CLAMAV_PORT || 3310);
@@ -78,4 +100,13 @@ async function scanApk(filePath) {
   }
 }
 
-module.exports = { scanApk, sha256 };
+async function health() {
+  try {
+    const response = await clamConnection('zPING\0');
+    return { configured: true, healthy: response === 'PONG', engine: 'clamav', response };
+  } catch (error) {
+    return { configured: true, healthy: false, engine: 'clamav', error: error.message };
+  }
+}
+
+module.exports = { health, scanApk, sha256 };

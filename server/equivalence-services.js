@@ -74,14 +74,20 @@ async function health(service, timeoutMs = 3000) {
       redirect: 'manual',
       headers: { Accept: 'application/json,text/plain,*/*' }
     });
+    const healthy = response.status >= 200 && response.status < 400;
     return {
       ...service,
-      healthy: response.status >= 200 && response.status < 500,
+      healthy,
       status: response.status,
       checkedAt: new Date().toISOString()
     };
   } catch (error) {
-    return { ...service, healthy: false, status: error.name === 'AbortError' ? 'timeout' : 'unreachable', checkedAt: new Date().toISOString() };
+    return {
+      ...service,
+      healthy: false,
+      status: error.name === 'AbortError' ? 'timeout' : 'unreachable',
+      checkedAt: new Date().toISOString()
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -117,4 +123,4 @@ function sessionLinks(session, profile = {}) {
   };
 }
 
-module.exports = { configuration, healthReport, sessionLinks };
+module.exports = { configuration, health, healthReport, sessionLinks };

@@ -12,7 +12,8 @@ function addPlatformNavigation() {
   const destinations = [
     ['/', 'Emulator'],
     ['/workbench.html', 'Workbench'],
-    ['/equivalence.html', 'Equivalence']
+    ['/equivalence.html', 'Integrations'],
+    ['/operations.html', 'Operations']
   ];
   for (const [href, label] of destinations.reverse()) {
     if (location.pathname === href || cluster.querySelector(`a[href="${href}"]`)) continue;

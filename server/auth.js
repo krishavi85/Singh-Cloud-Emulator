@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const apiKeys = require('./api-key-service');
 
 const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'sce_session';
 let cachedUsers = null;
@@ -24,12 +25,14 @@ function parseUsers() {
       email: String(user.email || '').trim().toLowerCase(),
       passwordHash: String(user.passwordHash || ''),
       role: user.role === 'admin' ? 'admin' : 'user',
-      devices: Array.isArray(user.devices) ? user.devices.map(String) : []
+      devices: Array.isArray(user.devices) ? user.devices.map(String) : [],
+      organizationId: user.organizationId ? String(user.organizationId) : null,
+      displayName: String(user.displayName || user.email || '').slice(0, 120)
     };
     if (!/^[A-Za-z0-9_-]{2,64}$/.test(normalized.id)) throw new Error(`Invalid user id: ${normalized.id}`);
     if (!normalized.email.includes('@')) throw new Error(`Invalid user email: ${normalized.email}`);
     if (!/^\$2[aby]\$/.test(normalized.passwordHash)) throw new Error(`User ${normalized.email} must use a bcrypt password hash.`);
-    if (process.env.NODE_ENV === 'production' && normalized.devices.length === 0) {
+    if (process.env.NODE_ENV === 'production' && normalized.role !== 'admin' && normalized.devices.length === 0) {
       throw new Error(`Production user ${normalized.email} must have at least one assigned device.`);
     }
     return normalized;
@@ -64,7 +67,16 @@ function cookieOptions() {
 }
 
 function publicUser(user) {
-  return { id: user.id, email: user.email, role: user.role, devices: user.devices };
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName || user.email,
+    role: user.role,
+    devices: user.devices,
+    organizationId: user.organizationId || null,
+    serviceAccount: user.serviceAccount === true,
+    scopes: user.serviceAccount ? user.scopes || [] : undefined
+  };
 }
 
 async function authenticateCredentials(email, password) {
@@ -78,7 +90,13 @@ async function authenticateCredentials(email, password) {
 function issueSession(res, user) {
   const ttlMinutes = Math.min(1440, Math.max(15, Number(process.env.JWT_TTL_MINUTES || 480)));
   const token = jwt.sign(
-    { sub: user.id, email: user.email, role: user.role, devices: user.devices },
+    {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      devices: user.devices,
+      organizationId: user.organizationId || null
+    },
     jwtSecret(),
     {
       algorithm: 'HS256',
@@ -120,15 +138,29 @@ function unauthorized(req, res, message) {
   return res.status(401).json({ ok: false, error: message });
 }
 
-function requireAuth(req, res, next) {
+function bearerToken(req) {
+  const header = String(req.get('authorization') || '');
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match ? match[1].trim() : '';
+}
+
+async function requireAuth(req, res, next) {
   try {
+    const serviceToken = bearerToken(req);
+    if (serviceToken) {
+      const serviceUser = await apiKeys.authenticateApiKey(serviceToken);
+      if (!serviceUser) return unauthorized(req, res, 'Invalid or expired API key.');
+      req.user = serviceUser;
+      return next();
+    }
+
     const token = req.cookies?.[COOKIE_NAME];
     if (!token) return unauthorized(req, res, 'Authentication required.');
     req.user = verifyToken(token);
-    next();
+    return next();
   } catch {
     clearSession(res);
-    unauthorized(req, res, 'Session expired or invalid.');
+    return unauthorized(req, res, 'Session expired or invalid.');
   }
 }
 
@@ -145,6 +177,7 @@ module.exports = {
   authenticateUpgrade,
   clearSession,
   issueSession,
+  parseUsers,
   publicUser,
   requireAuth
 };

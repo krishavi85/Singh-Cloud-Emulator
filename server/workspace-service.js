@@ -16,8 +16,13 @@ function workspaceDir(userId, workspaceId) {
 
 function resolveFile(userId, workspaceId, relativePath) {
   const base = workspaceDir(userId, workspaceId);
-  const normalized = path.posix.normalize(String(relativePath || '').replace(/\\/g, '/')).replace(/^\/+/, '');
-  if (!normalized || normalized.startsWith('../') || normalized.includes('/../')) {
+  const raw = String(relativePath || '').replace(/\\/g, '/');
+  const segments = raw.split('/');
+  if (!raw || raw.startsWith('/') || /^[A-Za-z]:\//.test(raw) || segments.includes('..') || segments.includes('')) {
+    throw Object.assign(new Error('Invalid workspace path.'), { status: 400 });
+  }
+  const normalized = path.posix.normalize(raw);
+  if (!normalized || normalized === '.' || normalized.startsWith('../') || normalized.includes('/../')) {
     throw Object.assign(new Error('Invalid workspace path.'), { status: 400 });
   }
   const resolved = path.resolve(base, normalized);
@@ -37,7 +42,8 @@ async function createWorkspaceFiles(userId, workspaceId) {
     'app/build.gradle.kts': 'plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }\n\nandroid { namespace = "com.singh.cloudapp"; compileSdk = 35\n    defaultConfig { applicationId = "com.singh.cloudapp"; minSdk = 24; targetSdk = 35; versionCode = 1; versionName = "1.0" }\n}\n\ndependencies { implementation("androidx.core:core-ktx:1.15.0"); implementation("androidx.appcompat:appcompat:1.7.0") }\n',
     'app/src/main/AndroidManifest.xml': '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:theme="@style/AppTheme" android:label="Cloud App"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>\n',
     'app/src/main/java/com/singh/cloudapp/MainActivity.kt': 'package com.singh.cloudapp\n\nimport android.os.Bundle\nimport android.widget.TextView\nimport androidx.appcompat.app.AppCompatActivity\n\nclass MainActivity : AppCompatActivity() {\n    override fun onCreate(savedInstanceState: Bundle?) {\n        super.onCreate(savedInstanceState)\n        setContentView(TextView(this).apply { text = "Hello from Singh Cloud Emulator"; textSize = 22f })\n    }\n}\n',
-    'app/src/main/res/values/styles.xml': '<resources><style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar"/></resources>\n'
+    'app/src/main/res/values/styles.xml': '<resources><style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar"/></resources>\n',
+    '.gitignore': '.gradle/\n.idea/\nlocal.properties\nbuild/\n**/build/\n*.jks\n*.keystore\n'
   };
   await Promise.all(Object.entries(files).map(async ([relative, content]) => {
     const target = path.join(base, relative);
@@ -52,6 +58,7 @@ async function listFiles(userId, workspaceId) {
   async function walk(directory) {
     const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
+      if (entry.name === '.git' || entry.name === '.gradle' || entry.name === 'build') continue;
       const full = path.join(directory, entry.name);
       if (entry.isDirectory()) await walk(full);
       else results.push(path.relative(base, full).replace(/\\/g, '/'));
@@ -81,4 +88,4 @@ async function deleteWorkspace(userId, workspaceId) {
   await fs.rm(workspaceDir(userId, workspaceId), { recursive: true, force: true });
 }
 
-module.exports = { createWorkspaceFiles, deleteWorkspace, listFiles, readFile, writeFile };
+module.exports = { createWorkspaceFiles, deleteWorkspace, listFiles, readFile, resolveFile, root, workspaceDir, writeFile };
