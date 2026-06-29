@@ -36,13 +36,14 @@ async function loadServices() {
 
 async function loadCaptures() {
   const body = await request('/api/equivalence/network-captures');
+  const stoppable = new Set(['queued', 'starting', 'running', 'stopping']);
   document.querySelector('#captureList').innerHTML = body.captures.map((capture) => `
     <article class="item-card">
       <header><strong>${escapeHtml(capture.id)}</strong><span class="badge">${escapeHtml(capture.status)}</span></header>
-      <p>${escapeHtml(capture.serial)} · ${escapeHtml(capture.proxy)}</p>
+      <p>${escapeHtml(capture.serial)} · ${escapeHtml(capture.proxy || 'Waiting for worker')}</p>
       <div class="item-actions">
-        ${capture.status === 'running' ? `<button data-stop-capture="${escapeHtml(capture.id)}">Stop</button>` : ''}
-        ${capture.harPath ? `<a href="${escapeHtml(capture.harPath)}" target="_blank" rel="noopener">Open HAR</a>` : ''}
+        ${stoppable.has(capture.status) ? `<button data-stop-capture="${escapeHtml(capture.id)}">Cancel or stop</button>` : ''}
+        ${capture.harPath ? `<a href="${escapeHtml(capture.harPath)}" target="_blank" rel="noopener">Download HAR</a>` : ''}
       </div>
     </article>`).join('') || '<p class="muted">No captures.</p>';
 }
@@ -81,7 +82,7 @@ document.querySelector('#createAppium').addEventListener('click', async () => {
 
 document.querySelector('#startCapture').addEventListener('click', async () => {
   try {
-    await request('/api/equivalence/network-captures', {
+    const body = await request('/api/equivalence/network-captures', {
       method: 'POST',
       body: JSON.stringify({
         serial: document.querySelector('#captureSerial').value.trim(),
@@ -89,7 +90,7 @@ document.querySelector('#startCapture').addEventListener('click', async () => {
       })
     });
     await loadCaptures();
-    notify('Network capture started. Install or trust the session CA only on test devices.');
+    notify(body.capture?.status === 'running' ? 'Network capture started.' : 'Network capture queued for an available worker.');
   } catch (error) {
     notify(error.message);
   }
@@ -101,7 +102,7 @@ document.querySelector('#captureList').addEventListener('click', async (event) =
   try {
     await request(`/api/equivalence/network-captures/${encodeURIComponent(button.dataset.stopCapture)}/stop`, { method: 'POST', body: '{}' });
     await loadCaptures();
-    notify('Network capture stopped.');
+    notify('Network capture cancellation requested.');
   } catch (error) {
     notify(error.message);
   }
@@ -131,9 +132,7 @@ function profileInput() {
 }
 
 document.querySelector('#collectPerfetto').addEventListener('click', () => collect('/api/equivalence/profiles/perfetto', profileInput()).catch((error) => notify(error.message)));
-
 document.querySelector('#collectSimpleperf').addEventListener('click', () => collect('/api/equivalence/profiles/simpleperf', profileInput()).catch((error) => notify(error.message)));
-
 document.querySelector('#collectHeap').addEventListener('click', () => collect('/api/equivalence/profiles/heap', profileInput()).catch((error) => notify(error.message)));
 
 document.querySelector('#loadHierarchy').addEventListener('click', async () => {
