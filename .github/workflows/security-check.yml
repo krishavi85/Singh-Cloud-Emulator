@@ -40,8 +40,10 @@ jobs:
         run: npm install --ignore-scripts --no-fund
       - name: Validate source, required files, tests and live startup
         run: npm run validate
-      - name: Prepare production template
-        run: cp deploy/top-tier.env.example deploy/top-tier.env
+      - name: Prepare production templates
+        run: |
+          cp .env.production.example .env.production
+          cp deploy/top-tier.env.example deploy/top-tier.env
       - name: Validate production Compose
         run: docker compose -f compose.production.yml config >/dev/null
       - name: Validate equivalence Compose
